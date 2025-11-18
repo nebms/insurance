@@ -35,5 +35,6 @@ htmlcov/
 
 # Application specific
 data/*.db
+data/pdfs/*.pdf
 logs/
 temp/

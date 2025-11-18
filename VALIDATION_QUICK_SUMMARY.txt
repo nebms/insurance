@@ -1,0 +1,104 @@
+INPUT VALIDATION ANALYSIS - QUICK SUMMARY
+==========================================
+
+CRITICAL VULNERABILITIES (3)
+============================
+1. SQL INJECTION in db_manager.py lines 152, 158
+   - get_table_row_count() uses f"...FROM {table_name}"
+   - clear_table() uses f"DELETE FROM {table_name}"
+   - FIX: Add whitelist validation for table names
+
+2. UNVALIDATED CSV RATE DATA in rate_import_dialog.py lines 225-314
+   - Missing columns silently become 0.0 rates
+   - float() conversions have no error handling
+   - No validation of rate ranges (negative, >100%)
+   - FIX: Validate all required columns, validate rate ranges, add error handling
+
+3. NO FORMAT VALIDATION in customer_dialog.py lines 128-139
+   - Email has NO validation (accepts anything)
+   - Phone has NO validation (accepts anything)
+   - No length limits on any fields
+   - FIX: Add regex validation, add length limits
+
+HIGH SEVERITY ISSUES (3)
+=======================
+1. Customer form: No length limit on customer_name (quote_form.py:292-299)
+2. Customer form: Weak customer selection via editable ComboBox (quote_form.py:77)
+3. Rate engine: No state code format validation (rate_engine.py:60, 83, 100, 140)
+
+FIELDS VALIDATED vs UNVALIDATED
+================================
+
+QUOTE FORM (src/ui/quote_form.py)
+---------------------------------
+✓ Customer name (non-empty only)
+✓ State (dropdown enforced)
+✓ Equipment age (spinbox 0-99)
+✓ Pivot amount (required, >0)
+✓ Ancillary amount (>=0)
+✓ Submersible amount (>=0)
+✓ High value warning (>$1M)
+✗ Customer name: no length limit
+✗ Agent name: no validation at all
+
+CUSTOMER DIALOG (src/ui/customer_dialog.py)
+--------------------------------------------
+✓ Name (non-empty check only)
+✗ Email: NO validation
+✗ Phone: NO validation
+✗ Address: NO validation
+✗ Notes: NO validation
+✗ NO length limits on any field
+
+RATE IMPORT (src/ui/rate_import_dialog.py)
+-------------------------------------------
+✓ state_code column presence check only
+✗ Rate values: NO validation
+✗ Rate ranges: NO validation (-inf to +inf accepted)
+✗ Column completeness: NO validation
+✗ CSV structure: NO validation beyond state_code
+✗ Error messages: Too generic, no row/field info
+
+DATABASE (src/database/db_manager.py)
+--------------------------------------
+SQL INJECTION VULNERABILITIES:
+  Line 152: get_table_row_count() - f-string table name
+  Line 158: clear_table() - f-string table name
+
+GOOD PRACTICES:
+  ✓ execute_query() uses parameterized queries with ?
+  ✓ execute_insert() uses parameterized queries with ?
+  ✓ execute_update() uses parameterized queries with ?
+  ✓ CustomerRepository uses parameterized queries
+  ✓ QuoteRepository uses parameterized queries
+
+RATE ENGINE (src/calculations/rate_engine.py)
+----------------------------------------------
+✓ State parameter IS parameterized with ?
+✓ Column names are application-controlled (not user input)
+✗ State code format NOT validated (should be 2 uppercase letters)
+
+FILES TO FIX (Priority)
+=======================
+1. src/database/db_manager.py - SQL injection in utility functions
+2. src/ui/rate_import_dialog.py - CSV data validation
+3. src/ui/customer_dialog.py - Email/phone format validation
+4. src/ui/quote_form.py - Field length limits
+5. src/calculations/rate_engine.py - State code validation
+
+RISK SUMMARY
+============
+Most Critical: Database layer SQL injection + CSV data corruption
+High Priority: Customer data format validation
+Medium Priority: Field length limits and special character handling
+Low Risk: Numeric fields are well-protected via UI controls
+
+GOOD NEWS
+=========
+- Most database queries use parameterized queries correctly
+- Numeric input is well-protected via spinbox/dropdown constraints
+- Only 2 functions have SQL injection vulnerabilities (localized)
+- Vulnerabilities can be fixed with targeted changes to 5 files
+- No user input crosses directly into SQL WHERE clauses (except table names)
+
+ESTIMATED FIX TIME: 2-3 hours for all critical and high issues
