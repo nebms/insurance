@@ -1,0 +1,234 @@
+"""
+PDF quote generation using ReportLab.
+"""
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph,
+    Spacer, PageBreak
+)
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from datetime import datetime
+from pathlib import Path
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from models.quote import Quote
+
+
+class PDFQuoteGenerator:
+    """Generate PDF quotes."""
+
+    def __init__(self, output_dir: str = "data/pdfs"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.styles = getSampleStyleSheet()
+        self._create_custom_styles()
+
+    def _create_custom_styles(self):
+        """Create custom paragraph styles."""
+        self.title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=self.styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1e3a8a'),
+            spaceAfter=30,
+            alignment=TA_CENTER
+        )
+
+        self.heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=self.styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#1e3a8a'),
+            spaceAfter=12,
+            spaceBefore=12
+        )
+
+    def generate_quote_pdf(self, quote: Quote, customer_name: str = "") -> str:
+        """
+        Generate PDF for quote.
+
+        Args:
+            quote: Quote object
+            customer_name: Customer name (optional)
+
+        Returns:
+            Path to generated PDF file
+        """
+        # Create filename
+        filename = f"Quote_{quote.quote_number}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        filepath = self.output_dir / filename
+
+        # Create document
+        doc = SimpleDocTemplate(
+            str(filepath),
+            pagesize=letter,
+            rightMargin=0.75*inch,
+            leftMargin=0.75*inch,
+            topMargin=0.75*inch,
+            bottomMargin=0.75*inch
+        )
+
+        # Build content
+        story = []
+
+        # Header
+        story.append(Paragraph("IRRIGATION EQUIPMENT", self.title_style))
+        story.append(Paragraph("Insurance Quote", self.styles['Heading2']))
+        story.append(Spacer(1, 0.25*inch))
+
+        # Quote info
+        quote_info_data = [
+            ['Quote Number:', quote.quote_number, 'Date:', quote.quote_date],
+            ['Customer:', customer_name or 'N/A', 'Agent:', quote.agent_name or 'N/A']
+        ]
+
+        quote_info_table = Table(quote_info_data, colWidths=[1.5*inch, 2.5*inch, 1*inch, 2*inch])
+        quote_info_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        story.append(quote_info_table)
+        story.append(Spacer(1, 0.25*inch))
+
+        # Equipment Details
+        story.append(Paragraph("Equipment Coverage Summary", self.heading_style))
+
+        equipment_data = [
+            ['Description', 'Amount'],
+            ['Pivot Equipment', f'${quote.pivot_amount:,.2f}'],
+            ['Ancillary Equipment', f'${quote.ancillary_amount:,.2f}'],
+            ['Submersible Pump/Panel', f'${quote.submersible_pump_amount:,.2f}'],
+            ['Total Coverage', f'${quote.pivot_amount + quote.ancillary_amount + quote.submersible_pump_amount:,.2f}']
+        ]
+
+        equipment_table = Table(equipment_data, colWidths=[4*inch, 2*inch])
+        equipment_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e3a8a')),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('LINEBELOW', (0, 3), (-1, 3), 2, colors.HexColor('#1e3a8a')),
+            ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+        ]))
+        story.append(equipment_table)
+        story.append(Spacer(1, 0.25*inch))
+
+        # Coverage Details
+        story.append(Paragraph("Coverage Details", self.heading_style))
+
+        # Deductible display
+        deductible_map = {1: '$500', 2: '$1,000', 3: '$2,500', 4: '$5,000'}
+        pivot_ded = deductible_map.get(quote.pivot_deductible_code, 'N/A')
+        anc_ded = deductible_map.get(quote.ancillary_deductible_code, 'N/A')
+
+        coverage_data = [
+            ['Location:', quote.state_code],
+            ['Equipment Age:', f'{quote.equipment_age_years} years' + (' (New)' if quote.equipment_age_years == 0 else '')],
+            ['Equipment Type:', 'Towable' if quote.is_towable else 'Standard'],
+            ['Term:', f'{quote.term_months} months'],
+            ['Pivot Deductible:', pivot_ded],
+            ['Ancillary Deductible:', anc_ded],
+            ['M&E Endorsement:', 'Yes (Pivot Only)' if quote.has_me_endorsement else 'No'],
+        ]
+
+        coverage_table = Table(coverage_data, colWidths=[2.5*inch, 3.5*inch])
+        coverage_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(coverage_table)
+        story.append(Spacer(1, 0.25*inch))
+
+        # Premium Breakdown
+        story.append(Paragraph("Premium Breakdown", self.heading_style))
+
+        premium_data = [
+            ['', 'Rate', 'Annual Premium'],
+            ['Pivot Insurance', f'{quote.pivot_rate:.2f}%' if quote.pivot_rate else 'N/A',
+             f'${quote.pivot_premium:,.2f}' if quote.pivot_premium else '$0.00'],
+            ['Ancillary Insurance', f'{quote.ancillary_rate:.2f}%' if quote.ancillary_rate else 'N/A',
+             f'${quote.ancillary_premium:,.2f}' if quote.ancillary_premium else '$0.00'],
+            ['Additional Charges', '',
+             f'${quote.submersible_charge:,.2f}' if quote.submersible_charge else '$0.00'],
+            ['TOTAL ANNUAL PREMIUM', '',
+             f'${quote.total_premium:,.2f}' if quote.total_premium else '$0.00']
+        ]
+
+        premium_table = Table(premium_data, colWidths=[3*inch, 1.5*inch, 1.5*inch])
+        premium_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e3a8a')),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('LINEABOVE', (0, 4), (-1, 4), 2, colors.HexColor('#1e3a8a')),
+            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#f3f4f6')),
+            ('FONTNAME', (0, 4), (-1, 4), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 4), (-1, 4), 12),
+        ]))
+        story.append(premium_table)
+        story.append(Spacer(1, 0.5*inch))
+
+        # Footer
+        footer_text = [
+            "• This quote is valid for 30 days from the date above.",
+            "• Coverage subject to underwriting approval and policy terms.",
+            "• For questions or to accept this quote, please contact your agent.",
+        ]
+
+        for text in footer_text:
+            story.append(Paragraph(text, self.styles['Normal']))
+
+        # Build PDF
+        doc.build(story)
+
+        return str(filepath)
+
+
+# Test function
+if __name__ == "__main__":
+    from models.quote import Quote
+    from datetime import date
+
+    # Create test quote
+    test_quote = Quote(
+        id=1,
+        quote_number="Q-00001",
+        quote_date=str(date.today()),
+        agent_name="Test Agent",
+        pivot_amount=100000,
+        ancillary_amount=0,
+        submersible_pump_amount=0,
+        equipment_age_years=0,
+        is_towable=0,
+        is_corner_or_long=0,
+        has_me_endorsement=1,
+        pivot_deductible_code=3,
+        ancillary_deductible_code=2,
+        term_months=12,
+        state_code="OK",
+        pivot_rate=1.95,
+        ancillary_rate=1.95,
+        pivot_premium=1950.00,
+        ancillary_premium=0,
+        submersible_charge=0,
+        total_premium=1950.00
+    )
+
+    # Generate PDF
+    generator = PDFQuoteGenerator()
+    pdf_path = generator.generate_quote_pdf(test_quote, "Test Customer")
+    print(f"✓ PDF generated: {pdf_path}")
