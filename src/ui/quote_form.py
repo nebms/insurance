@@ -16,9 +16,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.quote import Quote, QuoteRepository
+from models.quote_line_item import QuoteLineItem
 from models.customer import CustomerRepository
 from calculations.premium_calc import PremiumCalculator
 from database.db_manager import get_db
+from ui.line_item_widget import LineItemWidget
+from ui.line_item_dialog import LineItemDialog
 
 
 class QuoteForm(QWidget):
@@ -30,6 +33,9 @@ class QuoteForm(QWidget):
         self.customer_repo = CustomerRepository()
         self.quote_repo = QuoteRepository()
         self.calculator = PremiumCalculator()
+
+        # Quote mode: 'single' or 'multiple'
+        self.quote_mode = 'single'
 
         self._init_ui()
         self._load_states()
@@ -47,11 +53,21 @@ class QuoteForm(QWidget):
         title.setFont(title_font)
         layout.addWidget(title)
 
+        # Mode Toggle
+        layout.addWidget(self._create_mode_toggle())
+
         # Customer Information
         layout.addWidget(self._create_customer_group())
 
-        # Equipment Details
-        layout.addWidget(self._create_equipment_group())
+        # Equipment Mode Selection: Single or Multiple
+        # Single Equipment (traditional form)
+        self.single_equipment_group = self._create_equipment_group()
+        layout.addWidget(self.single_equipment_group)
+
+        # Multiple Equipment (line items)
+        self.line_item_widget = LineItemWidget(self)
+        self.line_item_widget.setVisible(False)
+        layout.addWidget(self.line_item_widget)
 
         # Coverage Options
         layout.addWidget(self._create_coverage_group())
@@ -174,6 +190,40 @@ class QuoteForm(QWidget):
         group.setLayout(layout)
         return group
 
+    def _create_mode_toggle(self):
+        """Create quote mode toggle widget."""
+        group = QGroupBox("Quote Mode")
+        layout = QHBoxLayout()
+
+        self.mode_group = QButtonGroup()
+        self.mode_single = QRadioButton("Single Equipment")
+        self.mode_multiple = QRadioButton("Multiple Equipment")
+        self.mode_single.setChecked(True)
+
+        self.mode_group.addButton(self.mode_single)
+        self.mode_group.addButton(self.mode_multiple)
+
+        # Connect to mode change handler
+        self.mode_single.toggled.connect(self._on_mode_changed)
+
+        layout.addWidget(self.mode_single)
+        layout.addWidget(self.mode_multiple)
+        layout.addStretch()
+
+        group.setLayout(layout)
+        return group
+
+    def _on_mode_changed(self, checked):
+        """Handle quote mode change."""
+        if checked:  # mode_single was checked
+            self.quote_mode = 'single'
+            self.single_equipment_group.setVisible(True)
+            self.line_item_widget.setVisible(False)
+        else:
+            self.quote_mode = 'multiple'
+            self.single_equipment_group.setVisible(False)
+            self.line_item_widget.setVisible(True)
+
     def _create_coverage_group(self):
         """Create coverage options group."""
         group = QGroupBox("Coverage Options")
@@ -276,6 +326,33 @@ class QuoteForm(QWidget):
         if age <= 34:
             self.corner_checkbox.setChecked(False)
 
+    def _open_line_item_dialog(self, line_item=None, index=None):
+        """Open dialog to add or edit a line item."""
+        # Validate state and term are selected
+        if not self.state_combo.currentData():
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Please select a state before adding equipment."
+            )
+            self.state_combo.setFocus()
+            return
+
+        state_code = self.state_combo.currentData()
+        term_months = int(self.term_combo.currentText())
+
+        # Open dialog
+        dialog = LineItemDialog(state_code, term_months, line_item, self)
+        if dialog.exec():
+            result_item = dialog.get_line_item()
+            if result_item:
+                if index is not None:
+                    # Edit mode
+                    self.line_item_widget.update_item(index, result_item)
+                else:
+                    # Add mode
+                    self.line_item_widget.add_line_item(result_item)
+
     def _deductible_to_code(self, deductible_text):
         """Convert deductible dropdown text to code."""
         mapping = {
@@ -308,6 +385,19 @@ class QuoteForm(QWidget):
             self.state_combo.setFocus()
             return False
 
+        # Mode-specific validation
+        if self.quote_mode == 'multiple':
+            # Multiple equipment mode - check line items exist
+            if not self.line_item_widget.has_items():
+                QMessageBox.warning(
+                    self,
+                    "Validation Error",
+                    "No equipment items added.\n\nPlease add at least one equipment item using the '+ Add Equipment' button."
+                )
+                return False
+            return True
+
+        # Single equipment mode validation
         # Pivot amount validation
         if self.pivot_amount.value() <= 0:
             QMessageBox.warning(
@@ -372,49 +462,76 @@ class QuoteForm(QWidget):
             return
 
         try:
-            # Gather inputs
-            params = {
-                'pivot_amount': self.pivot_amount.value(),
-                'ancillary_amount': self.ancillary_amount.value(),
-                'submersible_pump_amount': self.submersible_amount.value(),
-                'equipment_age_years': self.age_spin.value(),
-                'is_towable': self.type_towable.isChecked(),
-                'is_corner_or_long': self.corner_checkbox.isChecked(),
-                'has_me_endorsement': self.me_checkbox.isChecked(),
-                'pivot_deductible_code': self._deductible_to_code(self.pivot_deductible.currentText()),
-                'ancillary_deductible_code': self._deductible_to_code(self.ancillary_deductible.currentText()),
-                'term_months': int(self.term_combo.currentText()),
-                'state_code': self.state_combo.currentData()
-            }
+            if self.quote_mode == 'multiple':
+                # Multiple equipment mode - use line items
+                line_items = self.line_item_widget.get_line_items()
+                total_premium = self.line_item_widget.get_total_premium()
 
-            # Calculate
-            result = self.calculator.calculate_complete_quote(**params)
+                # Create aggregated result for display
+                result = {
+                    'total_premium': total_premium,
+                    'line_items': line_items,
+                    'is_multi_pivot': True
+                }
 
-            # Check if rates were found
-            if result['pivot_rate'] is None:
-                state_name = self.state_combo.currentText()
-                age = self.age_spin.value()
-                equipment_type = "Towable" if self.type_towable.isChecked() else "Standard"
+                # Use first line item for common params
+                first_item = line_items[0]
+                params = {
+                    'state_code': self.state_combo.currentData(),
+                    'term_months': int(self.term_combo.currentText()),
+                    'pivot_amount': first_item.pivot_amount,  # For display only
+                    'equipment_age_years': first_item.equipment_age_years,
+                    'is_multi_pivot': True
+                }
 
-                QMessageBox.warning(
-                    self,
-                    "Rate Not Found",
-                    f"<b>No insurance rate found for this configuration:</b><br><br>"
-                    f"<b>State:</b> {state_name}<br>"
-                    f"<b>Equipment Type:</b> {equipment_type}<br>"
-                    f"<b>Equipment Age:</b> {age} years<br><br>"
-                    f"<b>Possible reasons:</b><br>"
-                    f"• Rate tables have not been loaded for this state<br>"
-                    f"• This state/configuration is not supported<br>"
-                    f"• Sample rates are incomplete (test data only)<br><br>"
-                    f"<b>Action needed:</b><br>"
-                    f"Use <i>Tools → Load Rate Tables</i> to import actual rates,<br>"
-                    f"or contact your administrator for rate table support."
-                )
-                return
+                # Show results dialog
+                self._show_results(params, result, line_items)
 
-            # Show results dialog
-            self._show_results(params, result)
+            else:
+                # Single equipment mode - traditional calculation
+                # Gather inputs
+                params = {
+                    'pivot_amount': self.pivot_amount.value(),
+                    'ancillary_amount': self.ancillary_amount.value(),
+                    'submersible_pump_amount': self.submersible_amount.value(),
+                    'equipment_age_years': self.age_spin.value(),
+                    'is_towable': self.type_towable.isChecked(),
+                    'is_corner_or_long': self.corner_checkbox.isChecked(),
+                    'has_me_endorsement': self.me_checkbox.isChecked(),
+                    'pivot_deductible_code': self._deductible_to_code(self.pivot_deductible.currentText()),
+                    'ancillary_deductible_code': self._deductible_to_code(self.ancillary_deductible.currentText()),
+                    'term_months': int(self.term_combo.currentText()),
+                    'state_code': self.state_combo.currentData()
+                }
+
+                # Calculate
+                result = self.calculator.calculate_complete_quote(**params)
+
+                # Check if rates were found
+                if result['pivot_rate'] is None:
+                    state_name = self.state_combo.currentText()
+                    age = self.age_spin.value()
+                    equipment_type = "Towable" if self.type_towable.isChecked() else "Standard"
+
+                    QMessageBox.warning(
+                        self,
+                        "Rate Not Found",
+                        f"<b>No insurance rate found for this configuration:</b><br><br>"
+                        f"<b>State:</b> {state_name}<br>"
+                        f"<b>Equipment Type:</b> {equipment_type}<br>"
+                        f"<b>Equipment Age:</b> {age} years<br><br>"
+                        f"<b>Possible reasons:</b><br>"
+                        f"• Rate tables have not been loaded for this state<br>"
+                        f"• This state/configuration is not supported<br>"
+                        f"• Sample rates are incomplete (test data only)<br><br>"
+                        f"<b>Action needed:</b><br>"
+                        f"Use <i>Tools → Load Rate Tables</i> to import actual rates,<br>"
+                        f"or contact your administrator for rate table support."
+                    )
+                    return
+
+                # Show results dialog
+                self._show_results(params, result)
 
         except Exception as e:
             import traceback
@@ -435,7 +552,7 @@ class QuoteForm(QWidget):
             print("CALCULATION ERROR:")
             print(error_detail)
 
-    def _show_results(self, params, result):
+    def _show_results(self, params, result, line_items=None):
         """Show calculation results in dialog."""
         from .quote_results import QuoteResultsDialog
 
@@ -443,7 +560,7 @@ class QuoteForm(QWidget):
         customer_name = self.customer_name.text().strip()
         agent_name = self.agent_name.text().strip()
 
-        dialog = QuoteResultsDialog(self, params, result, customer_name, agent_name)
+        dialog = QuoteResultsDialog(self, params, result, customer_name, agent_name, line_items)
         if dialog.exec():
             # User saved the quote
             self.parent.update_status("Quote saved successfully", 3000)
@@ -464,3 +581,11 @@ class QuoteForm(QWidget):
         self.pivot_deductible.setCurrentIndex(2)
         self.ancillary_deductible.setCurrentIndex(1)
         self.term_combo.setCurrentIndex(0)
+
+        # Clear line items if in multiple mode
+        if hasattr(self, 'line_item_widget'):
+            self.line_item_widget.set_line_items([])
+
+        # Reset to single mode
+        if hasattr(self, 'mode_single'):
+            self.mode_single.setChecked(True)
