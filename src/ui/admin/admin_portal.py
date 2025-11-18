@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database.auth_manager import User
+from ui.admin.rate_viewer import RateViewer
 
 
 class AdminPortal(QWidget):
@@ -64,11 +65,31 @@ class AdminPortal(QWidget):
         # Tab widget for different rate tables
         self.tabs = QTabWidget()
 
-        # Create tabs for each rate table type
-        self.pivot_under_20_tab = self._create_placeholder_tab("Pivot Rates Under 20")
-        self.pivot_20_to_34_tab = self._create_placeholder_tab("Pivot Rates 20-34")
-        self.pivot_35_plus_tab = self._create_placeholder_tab("Pivot Rates 35+")
-        self.ancillary_tab = self._create_placeholder_tab("Ancillary Rates")
+        # Create rate viewer tabs for each table type
+        self.pivot_under_20_tab = RateViewer(
+            'pivot_rates_under_20',
+            'Pivot Rates Under 20 Years',
+            self.user,
+            self
+        )
+        self.pivot_20_to_34_tab = RateViewer(
+            'pivot_rates_20_to_34',
+            'Pivot Rates 20-34 Years',
+            self.user,
+            self
+        )
+        self.pivot_35_plus_tab = RateViewer(
+            'pivot_rates_35_plus',
+            'Pivot Rates 35+ Years',
+            self.user,
+            self
+        )
+        self.ancillary_tab = RateViewer(
+            'ancillary_rates',
+            'Ancillary Equipment Rates',
+            self.user,
+            self
+        )
 
         self.tabs.addTab(self.pivot_under_20_tab, "Pivot <20")
         self.tabs.addTab(self.pivot_20_to_34_tab, "Pivot 20-34")
@@ -97,30 +118,6 @@ class AdminPortal(QWidget):
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
-
-    def _create_placeholder_tab(self, name: str) -> QWidget:
-        """
-        Create placeholder tab (to be replaced with actual rate viewer).
-
-        Args:
-            name: Tab name
-
-        Returns:
-            Placeholder widget
-        """
-        widget = QWidget()
-        layout = QVBoxLayout()
-
-        label = QLabel(f"{name}\n\nRate viewer will be implemented in Phase 3")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label_font = QFont()
-        label_font.setPointSize(12)
-        label.setFont(label_font)
-
-        layout.addWidget(label)
-        widget.setLayout(layout)
-
-        return widget
 
     def _logout(self):
         """Handle logout."""
