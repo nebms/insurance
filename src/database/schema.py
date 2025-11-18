@@ -190,6 +190,39 @@ CREATE TABLE IF NOT EXISTS ancillary_rates (
 );
 """
 
+# Users table (unified for both agents and admins)
+CREATE_USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    email TEXT,
+    role TEXT NOT NULL CHECK(role IN ('admin', 'agent')),
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_login TEXT
+);
+"""
+
+# Rate change audit log
+CREATE_RATE_CHANGE_LOG_TABLE = """
+CREATE TABLE IF NOT EXISTS rate_change_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+    user_id INTEGER NOT NULL,
+    user_name TEXT NOT NULL,
+    table_name TEXT NOT NULL,
+    state_code TEXT NOT NULL,
+    column_name TEXT NOT NULL,
+    old_value REAL,
+    new_value REAL,
+    change_type TEXT,
+    notes TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+"""
+
 # Performance indexes
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id);",
@@ -200,15 +233,23 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_pivot_20to34_state ON pivot_rates_20_to_34(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_35plus_state ON pivot_rates_35_plus(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_ancillary_state ON ancillary_rates(state_code);",
+    "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);",
+    "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);",
+    "CREATE INDEX IF NOT EXISTS idx_rate_changes_timestamp ON rate_change_log(timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_rate_changes_user ON rate_change_log(user_id);",
+    "CREATE INDEX IF NOT EXISTS idx_rate_changes_state ON rate_change_log(state_code);",
+    "CREATE INDEX IF NOT EXISTS idx_rate_changes_table ON rate_change_log(table_name);",
 ]
 
 # All tables in creation order
 ALL_TABLES = [
     CREATE_STATES_TABLE,
     CREATE_CUSTOMERS_TABLE,
+    CREATE_USERS_TABLE,
     CREATE_QUOTES_TABLE,
     CREATE_PIVOT_RATES_UNDER_20_TABLE,
     CREATE_PIVOT_RATES_20_TO_34_TABLE,
     CREATE_PIVOT_RATES_35_PLUS_TABLE,
     CREATE_ANCILLARY_RATES_TABLE,
+    CREATE_RATE_CHANGE_LOG_TABLE,
 ]

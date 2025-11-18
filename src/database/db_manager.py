@@ -16,11 +16,13 @@ from .schema import ALL_TABLES, CREATE_INDEXES
 VALID_TABLES = {
     'states',
     'customers',
+    'users',
     'quotes',
     'pivot_rates_under_20',
     'pivot_rates_20_to_34',
     'pivot_rates_35_plus',
-    'ancillary_rates'
+    'ancillary_rates',
+    'rate_change_log'
 }
 
 
