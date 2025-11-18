@@ -180,7 +180,75 @@ class PDFQuoteGenerator:
             ('FONTSIZE', (0, 4), (-1, 4), 12),
         ]))
         story.append(premium_table)
-        story.append(Spacer(1, 0.5*inch))
+        story.append(Spacer(1, 0.25*inch))
+
+        # Alternative Deductible Scenarios (if available)
+        if quote.alt1_premium is not None or quote.alt2_premium is not None:
+            story.append(Paragraph("Alternative Deductible Options", self.heading_style))
+
+            # Build comparison table
+            alt_data = [
+                ['Option', 'Deductible', 'Rate', 'Annual Premium']
+            ]
+
+            # Selected option (current)
+            alt_data.append([
+                'Selected',
+                pivot_ded,
+                f'{quote.pivot_rate:.2f}%' if quote.pivot_rate else 'N/A',
+                f'${quote.total_premium:,.2f}' if quote.total_premium else '$0.00'
+            ])
+
+            # Alternative 1
+            if quote.alt1_premium is not None:
+                alt1_ded = deductible_map.get(quote.alt1_deductible, 'N/A')
+                alt_data.append([
+                    'Option 2',
+                    alt1_ded,
+                    f'{quote.alt1_rate:.2f}%' if quote.alt1_rate else 'N/A',
+                    f'${quote.alt1_premium:,.2f}'
+                ])
+
+            # Alternative 2
+            if quote.alt2_premium is not None:
+                alt2_ded = deductible_map.get(quote.alt2_deductible, 'N/A')
+                alt_data.append([
+                    'Option 3',
+                    alt2_ded,
+                    f'{quote.alt2_rate:.2f}%' if quote.alt2_rate else 'N/A',
+                    f'${quote.alt2_premium:,.2f}'
+                ])
+
+            alt_table = Table(alt_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 2*inch])
+            alt_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e5e7eb')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1e3a8a')),
+                ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+                ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#f9fafb')),
+                ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+            ]))
+            story.append(alt_table)
+
+            # Add explanation note
+            note_style = ParagraphStyle(
+                'Note',
+                parent=self.styles['Normal'],
+                fontSize=9,
+                textColor=colors.HexColor('#6b7280'),
+                spaceAfter=6,
+                spaceBefore=6
+            )
+            story.append(Spacer(1, 0.1*inch))
+            story.append(Paragraph(
+                "<i>Note: Alternative options show pivot insurance premiums only. "
+                "Ancillary and additional charges remain the same across all options.</i>",
+                note_style
+            ))
+            story.append(Spacer(1, 0.3*inch))
 
         # Footer
         footer_text = [

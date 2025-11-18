@@ -232,9 +232,14 @@ class QuoteResultsDialog(QDialog):
     def _export_pdf(self):
         """Export quote as PDF."""
         try:
+            # Generate a preview quote number for tracking
+            # Format: PREVIEW-YYYYMMDD-HHMMSS for uniqueness
+            from datetime import datetime
+            preview_number = f"PREVIEW-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
             # Create temporary quote object for PDF
             quote = Quote(
-                quote_number="PREVIEW",
+                quote_number=preview_number,
                 quote_date=str(date.today()),
                 agent_name=self.agent_name,
                 **self.params,
@@ -311,12 +316,41 @@ class QuoteResultsDialog(QDialog):
             # Save to database
             quote_id = self.quote_repo.create(quote)
 
-            QMessageBox.information(
+            # Ask if user wants to export PDF
+            reply = QMessageBox.question(
                 self,
                 "Quote Saved",
                 f"Quote {quote_number} saved successfully!\n\n"
-                f"Total Premium: ${self.result['total_premium']:,.2f}"
+                f"Total Premium: ${self.result['total_premium']:,.2f}\n\n"
+                f"Would you like to export this quote as a PDF?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
+
+            # Export PDF if requested
+            if reply == QMessageBox.StandardButton.Yes:
+                try:
+                    generator = PDFQuoteGenerator()
+                    pdf_path = generator.generate_quote_pdf(quote, self.customer_name or "Customer")
+
+                    # Open PDF
+                    if platform.system() == 'Windows':
+                        os.startfile(pdf_path)
+                    elif platform.system() == 'Darwin':  # macOS
+                        os.system(f'open "{pdf_path}"')
+                    else:  # Linux
+                        os.system(f'xdg-open "{pdf_path}"')
+
+                    QMessageBox.information(
+                        self,
+                        "PDF Generated",
+                        f"PDF exported to:\n{pdf_path}"
+                    )
+                except Exception as e:
+                    QMessageBox.warning(
+                        self,
+                        "PDF Export Error",
+                        f"Quote was saved but PDF export failed:\n{str(e)}"
+                    )
 
             self.accept()
 
