@@ -12,6 +12,17 @@ from datetime import datetime
 
 from .schema import ALL_TABLES, CREATE_INDEXES
 
+# Whitelist of valid table names for SQL injection prevention
+VALID_TABLES = {
+    'states',
+    'customers',
+    'quotes',
+    'pivot_rates_under_20',
+    'pivot_rates_20_to_34',
+    'pivot_rates_35_plus',
+    'ancillary_rates'
+}
+
 
 class DatabaseManager:
     """Manages database connections and operations."""
@@ -149,12 +160,20 @@ class DatabaseManager:
 
     def get_table_row_count(self, table_name: str) -> int:
         """Get number of rows in table."""
+        # Validate table name against whitelist to prevent SQL injection
+        if table_name not in VALID_TABLES:
+            raise ValueError(f"Invalid table name: '{table_name}'. Must be one of: {', '.join(sorted(VALID_TABLES))}")
+
         query = f"SELECT COUNT(*) as count FROM {table_name}"
         result = self.execute_query(query)
         return result[0]['count'] if result else 0
 
     def clear_table(self, table_name: str):
         """Delete all rows from table."""
+        # Validate table name against whitelist to prevent SQL injection
+        if table_name not in VALID_TABLES:
+            raise ValueError(f"Invalid table name: '{table_name}'. Must be one of: {', '.join(sorted(VALID_TABLES))}")
+
         query = f"DELETE FROM {table_name}"
         self.execute_update(query)
         print(f"✓ Cleared table: {table_name}")

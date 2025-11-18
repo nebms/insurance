@@ -205,8 +205,75 @@ class RateImportDialog(QDialog):
         finally:
             self.progress.setVisible(False)
 
+    def _validate_rate_value(self, value_str: str, column_name: str, state: str) -> float:
+        """
+        Validate and convert rate value.
+
+        Args:
+            value_str: String value from CSV
+            column_name: Name of the column for error messages
+            state: State code for error messages
+
+        Returns:
+            float: Validated rate value
+
+        Raises:
+            ValueError: If value is invalid
+        """
+        if not value_str or value_str.strip() == '':
+            raise ValueError(
+                f"Missing required rate value for state '{state}', column '{column_name}'\n\n"
+                f"All rate columns must have values."
+            )
+
+        try:
+            rate = float(value_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid rate value for state '{state}', column '{column_name}': '{value_str}'\n\n"
+                f"Rate must be a valid number."
+            )
+
+        # Validate rate range (0-100%)
+        if rate < 0:
+            raise ValueError(
+                f"Negative rate for state '{state}', column '{column_name}': {rate}\n\n"
+                f"Rates cannot be negative."
+            )
+
+        if rate > 100:
+            raise ValueError(
+                f"Invalid rate for state '{state}', column '{column_name}': {rate}%\n\n"
+                f"Rates cannot exceed 100%.\n"
+                f"Note: Enter rates as percentages (e.g., 2.50 for 2.50%)."
+            )
+
+        return rate
+
     def _import_pivot_under_20(self, db, state, date, row):
         """Import pivot under 20 rate."""
+        # Required columns for this table
+        required_columns = [
+            'standard_500_no_me', 'standard_500_with_me',
+            'standard_1000_no_me', 'standard_1000_with_me',
+            'standard_2500_no_me', 'standard_2500_with_me',
+            'standard_5000_no_me', 'standard_5000_with_me',
+            'towable_500_no_me', 'towable_500_with_me',
+            'towable_1000_no_me', 'towable_1000_with_me',
+            'towable_2500_no_me', 'towable_2500_with_me',
+            'towable_5000_no_me', 'towable_5000_with_me'
+        ]
+
+        # Validate all columns exist and have valid values
+        validated_rates = []
+        for col in required_columns:
+            if col not in row:
+                raise ValueError(
+                    f"Missing required column '{col}' in CSV file\n\n"
+                    f"For Pivot Rates (Under 20 years), all 16 rate columns must be present."
+                )
+            validated_rates.append(self._validate_rate_value(row[col], col, state))
+
         query = """
             INSERT OR REPLACE INTO pivot_rates_under_20 (
                 state_code, effective_date,
@@ -220,29 +287,33 @@ class RateImportDialog(QDialog):
                 towable_5000_no_me, towable_5000_with_me
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        params = (
-            state, date,
-            float(row.get('standard_500_no_me', 0)),
-            float(row.get('standard_500_with_me', 0)),
-            float(row.get('standard_1000_no_me', 0)),
-            float(row.get('standard_1000_with_me', 0)),
-            float(row.get('standard_2500_no_me', 0)),
-            float(row.get('standard_2500_with_me', 0)),
-            float(row.get('standard_5000_no_me', 0)),
-            float(row.get('standard_5000_with_me', 0)),
-            float(row.get('towable_500_no_me', 0)),
-            float(row.get('towable_500_with_me', 0)),
-            float(row.get('towable_1000_no_me', 0)),
-            float(row.get('towable_1000_with_me', 0)),
-            float(row.get('towable_2500_no_me', 0)),
-            float(row.get('towable_2500_with_me', 0)),
-            float(row.get('towable_5000_no_me', 0)),
-            float(row.get('towable_5000_with_me', 0))
-        )
+        params = (state, date, *validated_rates)
         db.execute_insert(query, params)
 
     def _import_pivot_20_to_34(self, db, state, date, row):
         """Import pivot 20-34 rate."""
+        # Required columns for this table
+        required_columns = [
+            'standard_500_no_me', 'standard_500_with_me',
+            'standard_1000_no_me', 'standard_1000_with_me',
+            'standard_2500_no_me', 'standard_2500_with_me',
+            'standard_5000_no_me', 'standard_5000_with_me',
+            'towable_500_no_me', 'towable_500_with_me',
+            'towable_1000_no_me', 'towable_1000_with_me',
+            'towable_2500_no_me', 'towable_2500_with_me',
+            'towable_5000_no_me', 'towable_5000_with_me'
+        ]
+
+        # Validate all columns exist and have valid values
+        validated_rates = []
+        for col in required_columns:
+            if col not in row:
+                raise ValueError(
+                    f"Missing required column '{col}' in CSV file\n\n"
+                    f"For Pivot Rates (20-34 years), all 16 rate columns must be present."
+                )
+            validated_rates.append(self._validate_rate_value(row[col], col, state))
+
         query = """
             INSERT OR REPLACE INTO pivot_rates_20_to_34 (
                 state_code, effective_date,
@@ -256,43 +327,50 @@ class RateImportDialog(QDialog):
                 towable_5000_no_me, towable_5000_with_me
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        params = (
-            state, date,
-            float(row.get('standard_500_no_me', 0)),
-            float(row.get('standard_500_with_me', 0)),
-            float(row.get('standard_1000_no_me', 0)),
-            float(row.get('standard_1000_with_me', 0)),
-            float(row.get('standard_2500_no_me', 0)),
-            float(row.get('standard_2500_with_me', 0)),
-            float(row.get('standard_5000_no_me', 0)),
-            float(row.get('standard_5000_with_me', 0)),
-            float(row.get('towable_500_no_me', 0)),
-            float(row.get('towable_500_with_me', 0)),
-            float(row.get('towable_1000_no_me', 0)),
-            float(row.get('towable_1000_with_me', 0)),
-            float(row.get('towable_2500_no_me', 0)),
-            float(row.get('towable_2500_with_me', 0)),
-            float(row.get('towable_5000_no_me', 0)),
-            float(row.get('towable_5000_with_me', 0))
-        )
+        params = (state, date, *validated_rates)
         db.execute_insert(query, params)
 
     def _import_pivot_35_plus(self, db, state, date, row):
         """Import pivot 35+ rate."""
+        # Required columns for this table
+        required_columns = ['standard_rate', 'corner_rate']
+
+        # Validate all columns exist and have valid values
+        validated_rates = []
+        for col in required_columns:
+            if col not in row:
+                raise ValueError(
+                    f"Missing required column '{col}' in CSV file\n\n"
+                    f"For Pivot Rates (35+ years), both 'standard_rate' and 'corner_rate' columns must be present."
+                )
+            validated_rates.append(self._validate_rate_value(row[col], col, state))
+
         query = """
             INSERT OR REPLACE INTO pivot_rates_35_plus (
                 state_code, effective_date, standard_rate, corner_rate
             ) VALUES (?, ?, ?, ?)
         """
-        params = (
-            state, date,
-            float(row.get('standard_rate', 0)),
-            float(row.get('corner_rate', 0))
-        )
+        params = (state, date, *validated_rates)
         db.execute_insert(query, params)
 
     def _import_ancillary(self, db, state, date, row):
         """Import ancillary rate."""
+        # Required columns for this table
+        required_columns = [
+            'standard_500', 'standard_1000', 'standard_2500', 'standard_5000',
+            'corner_500', 'corner_1000', 'corner_2500', 'corner_5000'
+        ]
+
+        # Validate all columns exist and have valid values
+        validated_rates = []
+        for col in required_columns:
+            if col not in row:
+                raise ValueError(
+                    f"Missing required column '{col}' in CSV file\n\n"
+                    f"For Ancillary Rates, all 8 rate columns must be present."
+                )
+            validated_rates.append(self._validate_rate_value(row[col], col, state))
+
         query = """
             INSERT OR REPLACE INTO ancillary_rates (
                 state_code, effective_date,
@@ -300,15 +378,5 @@ class RateImportDialog(QDialog):
                 corner_500, corner_1000, corner_2500, corner_5000
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        params = (
-            state, date,
-            float(row.get('standard_500', 0)),
-            float(row.get('standard_1000', 0)),
-            float(row.get('standard_2500', 0)),
-            float(row.get('standard_5000', 0)),
-            float(row.get('corner_500', 0)),
-            float(row.get('corner_1000', 0)),
-            float(row.get('corner_2500', 0)),
-            float(row.get('corner_5000', 0))
-        )
+        params = (state, date, *validated_rates)
         db.execute_insert(query, params)

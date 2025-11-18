@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+import re
 
 import sys
 from pathlib import Path
@@ -108,10 +109,58 @@ class CustomerDialog(QDialog):
             self.address_input.setPlainText(self.customer.address)
             self.notes_input.setPlainText(self.customer.notes)
 
+    def _validate_email(self, email: str) -> bool:
+        """
+        Validate email format.
+
+        Args:
+            email: Email address to validate
+
+        Returns:
+            bool: True if valid or empty, False otherwise
+        """
+        if not email:
+            return True  # Email is optional
+
+        # Basic email regex pattern
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(email_pattern, email) is not None
+
+    def _validate_phone(self, phone: str) -> bool:
+        """
+        Validate phone format.
+
+        Args:
+            phone: Phone number to validate
+
+        Returns:
+            bool: True if valid or empty, False otherwise
+        """
+        if not phone:
+            return True  # Phone is optional
+
+        # Remove common separators for validation
+        cleaned_phone = re.sub(r'[\s\-\(\)\.]', '', phone)
+
+        # Must be 10-15 digits (supports international)
+        # Must start with digit (not special characters)
+        if not cleaned_phone.isdigit():
+            return False
+
+        if len(cleaned_phone) < 10 or len(cleaned_phone) > 15:
+            return False
+
+        return True
+
     def _save(self):
         """Validate and save customer."""
         name = self.name_input.text().strip()
+        email = self.email_input.text().strip()
+        phone = self.phone_input.text().strip()
+        address = self.address_input.toPlainText().strip()
+        notes = self.notes_input.toPlainText().strip()
 
+        # Validate name (required)
         if not name:
             QMessageBox.warning(
                 self,
@@ -121,22 +170,104 @@ class CustomerDialog(QDialog):
             self.name_input.setFocus()
             return
 
+        # Validate name length
+        if len(name) > 200:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Customer name must be 200 characters or less.\n\n"
+                f"Current length: {len(name)} characters"
+            )
+            self.name_input.setFocus()
+            return
+
+        # Validate email format
+        if email and not self._validate_email(email):
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Invalid email format.\n\n"
+                "Please enter a valid email address (e.g., john@example.com)\n"
+                "or leave blank if not available."
+            )
+            self.email_input.setFocus()
+            return
+
+        # Validate email length
+        if len(email) > 100:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Email must be 100 characters or less.\n\n"
+                f"Current length: {len(email)} characters"
+            )
+            self.email_input.setFocus()
+            return
+
+        # Validate phone format
+        if phone and not self._validate_phone(phone):
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Invalid phone number format.\n\n"
+                "Please enter a valid phone number:\n"
+                "• 10-15 digits\n"
+                "• Can include: spaces, hyphens, parentheses, periods\n"
+                "• Examples: (555) 123-4567, 555-123-4567, 5551234567\n\n"
+                "Or leave blank if not available."
+            )
+            self.phone_input.setFocus()
+            return
+
+        # Validate phone length
+        if len(phone) > 30:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Phone number must be 30 characters or less.\n\n"
+                f"Current length: {len(phone)} characters"
+            )
+            self.phone_input.setFocus()
+            return
+
+        # Validate address length
+        if len(address) > 500:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Address must be 500 characters or less.\n\n"
+                f"Current length: {len(address)} characters"
+            )
+            self.address_input.setFocus()
+            return
+
+        # Validate notes length
+        if len(notes) > 1000:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Notes must be 1000 characters or less.\n\n"
+                f"Current length: {len(notes)} characters"
+            )
+            self.notes_input.setFocus()
+            return
+
         # Create customer object
         if self.customer:
             # Editing existing
             self.customer.name = name
-            self.customer.email = self.email_input.text().strip()
-            self.customer.phone = self.phone_input.text().strip()
-            self.customer.address = self.address_input.toPlainText().strip()
-            self.customer.notes = self.notes_input.toPlainText().strip()
+            self.customer.email = email
+            self.customer.phone = phone
+            self.customer.address = address
+            self.customer.notes = notes
         else:
             # Creating new
             self.customer = Customer(
                 name=name,
-                email=self.email_input.text().strip(),
-                phone=self.phone_input.text().strip(),
-                address=self.address_input.toPlainText().strip(),
-                notes=self.notes_input.toPlainText().strip()
+                email=email,
+                phone=phone,
+                address=address,
+                notes=notes
             )
 
         self.accept()
