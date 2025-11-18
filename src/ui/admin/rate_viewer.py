@@ -21,6 +21,7 @@ from database.db_manager import get_db
 from database.auth_manager import User
 from database.audit_manager import AuditManager
 from ui.admin.rate_editor_dialog import RateEditorDialog
+from ui.admin.bulk_update_dialog import BulkUpdateDialog
 
 
 class RateViewer(QWidget):
@@ -381,10 +382,32 @@ class RateViewer(QWidget):
 
     def _bulk_update(self):
         """Open bulk update dialog."""
-        # Will be implemented in Phase 4
-        QMessageBox.information(
-            self,
-            "Bulk Update",
-            "Bulk update will be implemented in Phase 4:\n"
-            "Bulk Update Operations"
+        # Get selected states (from selected rows)
+        selected_rows = self.table.selectionModel().selectedRows()
+        selected_states = []
+
+        for row_index in selected_rows:
+            row = row_index.row()
+            state_item = self.table.item(row, 0)
+            if state_item:
+                selected_states.append(state_item.text())
+
+        # Get all available states
+        query = "SELECT code FROM states WHERE is_active = 1 ORDER BY code"
+        all_states_result = self.db.execute_query(query)
+        all_states = [row['code'] for row in all_states_result]
+
+        # Open bulk update dialog
+        dialog = BulkUpdateDialog(
+            table_name=self.table_name,
+            table_display_name=self.table_display_name,
+            selected_states=selected_states,
+            all_states=all_states,
+            user=self.user,
+            parent=self
         )
+
+        if dialog.exec():
+            # Reload rates to reflect changes
+            self._load_rates()
+            self.status_label.setText("Bulk update completed successfully")
