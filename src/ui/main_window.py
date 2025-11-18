@@ -96,13 +96,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready for new quote", 2000)
 
     def _load_rate_tables(self):
-        """Load rate tables from CSV (placeholder)."""
-        QMessageBox.information(
-            self,
-            "Load Rate Tables",
-            "Rate table loading will be implemented in CSV import feature.\n\n"
-            "Currently using sample rates for testing."
-        )
+        """Load rate tables from CSV."""
+        from .rate_import_dialog import RateImportDialog
+        dialog = RateImportDialog(self)
+        if dialog.exec():
+            # Rates were successfully imported
+            self.statusBar().showMessage("Rate tables updated successfully", 5000)
 
     def _show_about(self):
         """Show about dialog."""

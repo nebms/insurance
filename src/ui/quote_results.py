@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from datetime import date
+from typing import Optional
 import os
 import platform
 
@@ -24,11 +25,14 @@ from reports.pdf_generator import PDFQuoteGenerator
 class QuoteResultsDialog(QDialog):
     """Dialog showing quote calculation results."""
 
-    def __init__(self, parent, params, result):
+    def __init__(self, parent, params, result, customer_name="", agent_name=""):
         super().__init__(parent)
         self.params = params
         self.result = result
+        self.customer_name = customer_name
+        self.agent_name = agent_name
         self.quote_repo = QuoteRepository()
+        self.customer_id = None  # Will be set if customer exists or is created
 
         self.setWindowTitle("Quote Results")
         self.setModal(True)
@@ -232,14 +236,14 @@ class QuoteResultsDialog(QDialog):
             quote = Quote(
                 quote_number="PREVIEW",
                 quote_date=str(date.today()),
-                agent_name="",
+                agent_name=self.agent_name,
                 **self.params,
                 **self.result
             )
 
             # Generate PDF
             generator = PDFQuoteGenerator()
-            pdf_path = generator.generate_quote_pdf(quote, "Preview Customer")
+            pdf_path = generator.generate_quote_pdf(quote, self.customer_name or "Preview Customer")
 
             # Open PDF
             if platform.system() == 'Windows':
@@ -265,14 +269,17 @@ class QuoteResultsDialog(QDialog):
     def _save_quote(self):
         """Save quote to database."""
         try:
+            # Find or create customer
+            customer_id = self._get_or_create_customer()
+
             # Generate quote number
             quote_number = self.quote_repo.generate_quote_number()
 
             # Create quote object
             quote = Quote(
                 quote_number=quote_number,
-                customer_id=None,  # TODO: Link to customer if selected
-                agent_name="",  # TODO: Get from user
+                customer_id=customer_id,
+                agent_name=self.agent_name,
                 quote_date=str(date.today()),
                 pivot_amount=self.params['pivot_amount'],
                 ancillary_amount=self.params['ancillary_amount'],
@@ -319,3 +326,30 @@ class QuoteResultsDialog(QDialog):
                 "Save Error",
                 f"Error saving quote:\n{str(e)}"
             )
+
+    def _get_or_create_customer(self) -> Optional[int]:
+        """Find existing customer or create new one."""
+        from models.customer import Customer, CustomerRepository
+
+        if not self.customer_name:
+            return None  # Quote without customer
+
+        customer_repo = CustomerRepository()
+
+        # Search for existing customer by name
+        existing = customer_repo.search(self.customer_name)
+
+        if existing:
+            # Found existing customer(s), use first match
+            return existing[0].id
+        else:
+            # Create new customer
+            customer = Customer(
+                name=self.customer_name,
+                email="",
+                phone="",
+                address="",
+                notes=f"Auto-created from quote on {date.today()}"
+            )
+            customer_id = customer_repo.create(customer)
+            return customer_id

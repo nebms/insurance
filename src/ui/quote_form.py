@@ -69,17 +69,32 @@ class QuoteForm(QWidget):
         group = QGroupBox("Customer Information")
         layout = QGridLayout()
 
-        # Customer Name
-        layout.addWidget(QLabel("Customer Name *:"), 0, 0)
+        # Customer selection/creation
+        layout.addWidget(QLabel("Customer:"), 0, 0)
+
+        # Customer combo box
+        self.customer_combo = QComboBox()
+        self.customer_combo.setEditable(True)
+        self.customer_combo.setPlaceholderText("Select existing or type new customer name")
+        self.customer_combo.currentTextChanged.connect(self._on_customer_changed)
+        layout.addWidget(self.customer_combo, 0, 1)
+
+        # New customer button
+        new_customer_btn = QPushButton("+ New")
+        new_customer_btn.clicked.connect(self._create_new_customer)
+        layout.addWidget(new_customer_btn, 0, 2)
+
+        # Customer Name (for new customers or display)
+        layout.addWidget(QLabel("Customer Name *:"), 1, 0)
         self.customer_name = QLineEdit()
         self.customer_name.setPlaceholderText("Enter customer name")
-        layout.addWidget(self.customer_name, 0, 1, 1, 2)
+        layout.addWidget(self.customer_name, 1, 1, 1, 2)
 
         # Agent Name
-        layout.addWidget(QLabel("Agent Name:"), 1, 0)
+        layout.addWidget(QLabel("Agent Name:"), 2, 0)
         self.agent_name = QLineEdit()
         self.agent_name.setPlaceholderText("Your name")
-        layout.addWidget(self.agent_name, 1, 1, 1, 2)
+        layout.addWidget(self.agent_name, 2, 1, 1, 2)
 
         group.setLayout(layout)
         return group
@@ -222,6 +237,39 @@ class QuoteForm(QWidget):
         for state in states:
             self.state_combo.addItem(f"{state['name']} ({state['code']})", state['code'])
 
+        # Also load customers
+        self._load_customers()
+
+    def _load_customers(self):
+        """Load customers into dropdown."""
+        customers = self.customer_repo.get_all()
+        self.customer_combo.clear()
+        self.customer_combo.addItem("-- New Customer --", None)
+
+        for customer in customers:
+            self.customer_combo.addItem(customer.name, customer.id)
+
+    def _on_customer_changed(self, text):
+        """Handle customer selection change."""
+        if text and text != "-- New Customer --":
+            self.customer_name.setText(text)
+
+    def _create_new_customer(self):
+        """Open dialog to create new customer."""
+        from .customer_dialog import CustomerDialog
+
+        dialog = CustomerDialog(self)
+        if dialog.exec():
+            customer = dialog.get_customer()
+            if customer:
+                # Save customer
+                customer_id = self.customer_repo.create(customer)
+                # Reload customer list
+                self._load_customers()
+                # Select the new customer
+                self.customer_combo.setCurrentText(customer.name)
+                self.customer_name.setText(customer.name)
+
     def _on_age_changed(self, age):
         """Enable corner checkbox if age > 34."""
         self.corner_checkbox.setEnabled(age > 34)
@@ -240,17 +288,81 @@ class QuoteForm(QWidget):
 
     def _validate_form(self):
         """Validate form inputs."""
+        # Customer name validation
         if not self.customer_name.text().strip():
-            QMessageBox.warning(self, "Validation Error", "Customer name is required.")
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Customer name is required.\n\nPlease enter a customer name or select an existing customer."
+            )
+            self.customer_name.setFocus()
             return False
 
-        if self.state_combo.currentIndex() == -1:
-            QMessageBox.warning(self, "Validation Error", "Please select a state.")
+        # State validation
+        if not self.state_combo.currentData():
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "State is required.\n\nPlease select a state from the dropdown."
+            )
+            self.state_combo.setFocus()
             return False
 
-        if self.pivot_amount.value() == 0:
-            QMessageBox.warning(self, "Validation Error", "Pivot amount must be greater than 0.")
+        # Pivot amount validation
+        if self.pivot_amount.value() <= 0:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Pivot amount must be greater than $0.\n\nPlease enter the insured value of the pivot equipment."
+            )
+            self.pivot_amount.setFocus()
             return False
+
+        # Equipment age validation
+        if self.age_spin.value() < 0:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Equipment age cannot be negative.\n\nPlease enter a valid age (0 for new equipment)."
+            )
+            self.age_spin.setFocus()
+            return False
+
+        # Ancillary amount validation (if entered, must be positive)
+        if self.ancillary_amount.value() < 0:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Ancillary amount cannot be negative.\n\nLeave at $0 if no ancillary equipment."
+            )
+            self.ancillary_amount.setFocus()
+            return False
+
+        # Submersible pump validation (if entered, must be positive)
+        if self.submersible_amount.value() < 0:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Submersible pump amount cannot be negative.\n\nLeave at $0 if no submersible pump."
+            )
+            self.submersible_amount.setFocus()
+            return False
+
+        # Warning for very high amounts
+        total_coverage = (self.pivot_amount.value() +
+                         self.ancillary_amount.value() +
+                         self.submersible_amount.value())
+
+        if total_coverage > 1000000:  # $1M+
+            reply = QMessageBox.question(
+                self,
+                "Confirm High Value",
+                f"The total coverage amount is ${total_coverage:,.2f}.\n\n"
+                "This is unusually high. Is this correct?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return False
 
         return True
 
@@ -280,11 +392,24 @@ class QuoteForm(QWidget):
 
             # Check if rates were found
             if result['pivot_rate'] is None:
+                state_name = self.state_combo.currentText()
+                age = self.age_spin.value()
+                equipment_type = "Towable" if self.type_towable.isChecked() else "Standard"
+
                 QMessageBox.warning(
                     self,
                     "Rate Not Found",
-                    f"No rate found for {self.state_combo.currentText()} with current configuration.\n\n"
-                    "Please verify rate tables are loaded."
+                    f"<b>No insurance rate found for this configuration:</b><br><br>"
+                    f"<b>State:</b> {state_name}<br>"
+                    f"<b>Equipment Type:</b> {equipment_type}<br>"
+                    f"<b>Equipment Age:</b> {age} years<br><br>"
+                    f"<b>Possible reasons:</b><br>"
+                    f"• Rate tables have not been loaded for this state<br>"
+                    f"• This state/configuration is not supported<br>"
+                    f"• Sample rates are incomplete (test data only)<br><br>"
+                    f"<b>Action needed:</b><br>"
+                    f"Use <i>Tools → Load Rate Tables</i> to import actual rates,<br>"
+                    f"or contact your administrator for rate table support."
                 )
                 return
 
@@ -292,17 +417,33 @@ class QuoteForm(QWidget):
             self._show_results(params, result)
 
         except Exception as e:
+            import traceback
+            error_detail = traceback.format_exc()
+
             QMessageBox.critical(
                 self,
                 "Calculation Error",
-                f"Error calculating quote:\n{str(e)}"
+                f"<b>An error occurred while calculating the quote:</b><br><br>"
+                f"{str(e)}<br><br>"
+                f"<b>Please check:</b><br>"
+                f"• All form fields are filled correctly<br>"
+                f"• Database is accessible<br>"
+                f"• Rate tables are loaded<br><br>"
+                f"<i>If this problem persists, contact technical support.</i>"
             )
+            # Log the full error
+            print("CALCULATION ERROR:")
+            print(error_detail)
 
     def _show_results(self, params, result):
         """Show calculation results in dialog."""
         from .quote_results import QuoteResultsDialog
 
-        dialog = QuoteResultsDialog(self, params, result)
+        # Pass customer and agent info
+        customer_name = self.customer_name.text().strip()
+        agent_name = self.agent_name.text().strip()
+
+        dialog = QuoteResultsDialog(self, params, result, customer_name, agent_name)
         if dialog.exec():
             # User saved the quote
             self.parent.update_status("Quote saved successfully", 3000)

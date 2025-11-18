@@ -99,13 +99,27 @@ class CustomerManagement(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(customer.phone))
 
     def _add_customer(self):
-        """Add new customer (simplified)."""
-        QMessageBox.information(
-            self,
-            "Add Customer",
-            "Customer creation dialog will be implemented.\n\n"
-            "For now, customers are created automatically from quotes."
-        )
+        """Add new customer."""
+        from .customer_dialog import CustomerDialog
+
+        dialog = CustomerDialog(self)
+        if dialog.exec():
+            customer = dialog.get_customer()
+            if customer:
+                try:
+                    self.customer_repo.create(customer)
+                    self._load_customers()
+                    QMessageBox.information(
+                        self,
+                        "Success",
+                        f"Customer '{customer.name}' created successfully!"
+                    )
+                except Exception as e:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to create customer:\n{str(e)}"
+                    )
 
     def _view_customer_quotes(self, customer):
         """View quotes for customer."""
