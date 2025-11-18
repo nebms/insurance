@@ -137,13 +137,10 @@ class AdminPortal(QWidget):
 
     def _view_change_history(self):
         """View rate change history (audit log)."""
-        # Will be implemented in Phase 5
-        QMessageBox.information(
-            self,
-            "Change History",
-            "Audit log viewer will be implemented in Phase 5:\n"
-            "Export and Audit Log Viewer"
-        )
+        from ui.admin.audit_log_viewer import AuditLogViewer
+
+        dialog = AuditLogViewer(self.user, self)
+        dialog.exec()
 
     def _import_rates(self):
         """Import rates from CSV file."""

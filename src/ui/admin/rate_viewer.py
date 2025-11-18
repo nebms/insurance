@@ -6,12 +6,13 @@ Displays rates for a specific table type with filtering and validation.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
     QTableWidgetItem, QHeaderView, QPushButton, QLabel,
-    QComboBox, QMessageBox, QLineEdit
+    QComboBox, QMessageBox, QLineEdit, QFileDialog
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 from typing import Optional, List, Dict, Any
-from datetime import date
+from datetime import date, datetime
+import csv
 
 import sys
 from pathlib import Path
@@ -372,13 +373,68 @@ class RateViewer(QWidget):
 
     def _export_to_csv(self):
         """Export current rates to CSV file."""
-        # Will be implemented in Phase 5
-        QMessageBox.information(
+        # Get current rates from database
+        query = f"SELECT * FROM {self.table_name} ORDER BY state_code"
+        rates = self.db.execute_query(query)
+
+        if not rates:
+            QMessageBox.information(
+                self,
+                "No Data",
+                "No rates to export."
+            )
+            return
+
+        # Prompt for file location
+        default_filename = f"{self.table_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export to CSV",
-            "CSV export will be implemented in Phase 5:\n"
-            "Export and Audit Log Viewer"
+            "Export Rates to CSV",
+            default_filename,
+            "CSV Files (*.csv);;All Files (*)"
         )
+
+        if not file_path:
+            return
+
+        try:
+            # Get column names
+            columns = self.column_maps.get(self.table_name, [])
+
+            # Export to CSV
+            with open(file_path, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+
+                # Write header (formatted column names)
+                header = [col.replace('_', ' ').title() for col in columns]
+                writer.writerow(header)
+
+                # Write data
+                for rate in rates:
+                    row = []
+                    for col in columns:
+                        value = rate[col]
+                        if col in ('state_code', 'effective_date'):
+                            row.append(value)
+                        else:
+                            # Format rate values
+                            row.append(f"{value:.2f}" if value is not None else "")
+                    writer.writerow(row)
+
+            QMessageBox.information(
+                self,
+                "Export Successful",
+                f"Rates exported successfully!\n\n"
+                f"File: {file_path}\n"
+                f"Records: {len(rates)}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"Failed to export rates:\n{str(e)}"
+            )
 
     def _bulk_update(self):
         """Open bulk update dialog."""
