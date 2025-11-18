@@ -47,9 +47,9 @@ class QuoteHistory(QWidget):
 
         # Quotes table
         self.table = QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "Quote #", "Date", "State", "Age", "Total Premium", "Status", "Actions"
+            "Quote #", "Date", "State", "Type", "Items", "Total Premium", "Status", "Actions"
         ])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -57,7 +57,8 @@ class QuoteHistory(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
         # Enable double-click to view details
@@ -80,16 +81,35 @@ class QuoteHistory(QWidget):
 
     def _load_quotes(self):
         """Load quotes into table."""
-        quotes = self.quote_repo.get_all(limit=100)
+        # Load quotes with line items for accurate display
+        quotes = self.quote_repo.get_all(limit=100, load_line_items=True)
         self.table.setRowCount(len(quotes))
 
         for row, quote in enumerate(quotes):
+            is_multi = quote.has_multiple_items()
+
             self.table.setItem(row, 0, QTableWidgetItem(quote.quote_number))
             self.table.setItem(row, 1, QTableWidgetItem(quote.quote_date))
             self.table.setItem(row, 2, QTableWidgetItem(quote.state_code))
-            self.table.setItem(row, 3, QTableWidgetItem(f"{quote.equipment_age_years} yrs"))
-            self.table.setItem(row, 4, QTableWidgetItem(f"${quote.total_premium:,.2f}"))
-            self.table.setItem(row, 5, QTableWidgetItem(quote.status))
+
+            # Type column
+            if is_multi:
+                type_item = QTableWidgetItem("Multi-Pivot")
+                type_font = QFont()
+                type_font.setBold(True)
+                type_item.setFont(type_font)
+                self.table.setItem(row, 3, type_item)
+            else:
+                self.table.setItem(row, 3, QTableWidgetItem("Single"))
+
+            # Items column
+            if is_multi:
+                self.table.setItem(row, 4, QTableWidgetItem(f"{len(quote.line_items)} items"))
+            else:
+                self.table.setItem(row, 4, QTableWidgetItem(f"{quote.equipment_age_years} yrs"))
+
+            self.table.setItem(row, 5, QTableWidgetItem(f"${quote.total_premium:,.2f}"))
+            self.table.setItem(row, 6, QTableWidgetItem(quote.status))
 
             # Action buttons
             actions_widget = QWidget()
@@ -111,7 +131,7 @@ class QuoteHistory(QWidget):
             actions_layout.addWidget(delete_btn)
             actions_layout.addStretch()
 
-            self.table.setCellWidget(row, 6, actions_widget)
+            self.table.setCellWidget(row, 7, actions_widget)
 
     def _on_row_double_clicked(self, row, column):
         """Handle double-click on row."""
@@ -213,7 +233,12 @@ class QuoteDetailsDialog(QDialog):
         layout = QVBoxLayout()
 
         # Title
-        title = QLabel(f"Quote {self.quote.quote_number}")
+        is_multi = self.quote.has_multiple_items()
+        title_text = f"Quote {self.quote.quote_number}"
+        if is_multi:
+            title_text += f" (Multi-Pivot - {len(self.quote.line_items)} items)"
+
+        title = QLabel(title_text)
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -233,26 +258,55 @@ class QuoteDetailsDialog(QDialog):
         row += 1
         self._add_detail(grid, row, "Status:", self.quote.status)
         row += 1
-
-        # Equipment
-        grid.addWidget(QLabel(""), row, 0)  # Spacer
+        self._add_detail(grid, row, "State:", self.quote.state_code)
         row += 1
-        header = QLabel("Equipment Details")
+        self._add_detail(grid, row, "Term:", f"{self.quote.term_months} months")
+        row += 1
+
+        layout.addLayout(grid)
+
+        if is_multi:
+            # Multi-pivot: show line items table
+            self._add_line_items_table(layout)
+        else:
+            # Single pivot: show traditional details
+            self._add_single_pivot_details(layout)
+
+        # Notes
+        if self.quote.notes:
+            layout.addWidget(QLabel("Notes:"))
+            notes_text = QTextEdit()
+            notes_text.setPlainText(self.quote.notes)
+            notes_text.setReadOnly(True)
+            notes_text.setMaximumHeight(100)
+            layout.addWidget(notes_text)
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+
+        self.setLayout(layout)
+
+    def _add_single_pivot_details(self, layout):
+        """Add single pivot equipment details."""
+        grid = QGridLayout()
+        row = 0
+
         header_font = QFont()
         header_font.setBold(True)
+
+        # Equipment
+        header = QLabel("Equipment Details")
         header.setFont(header_font)
         grid.addWidget(header, row, 0, 1, 2)
         row += 1
 
-        self._add_detail(grid, row, "State:", self.quote.state_code)
-        row += 1
         self._add_detail(grid, row, "Age:", f"{self.quote.equipment_age_years} years")
         row += 1
         self._add_detail(grid, row, "Type:", "Towable" if self.quote.is_towable else "Standard")
         row += 1
         self._add_detail(grid, row, "M&E Endorsement:", "Yes" if self.quote.has_me_endorsement else "No")
-        row += 1
-        self._add_detail(grid, row, "Term:", f"{self.quote.term_months} months")
         row += 1
 
         # Coverage
@@ -289,21 +343,97 @@ class QuoteDetailsDialog(QDialog):
 
         layout.addLayout(grid)
 
-        # Notes
-        if self.quote.notes:
-            layout.addWidget(QLabel("Notes:"))
-            notes_text = QTextEdit()
-            notes_text.setPlainText(self.quote.notes)
-            notes_text.setReadOnly(True)
-            notes_text.setMaximumHeight(100)
-            layout.addWidget(notes_text)
+    def _add_line_items_table(self, layout):
+        """Add line items table for multi-pivot quotes."""
+        header_font = QFont()
+        header_font.setBold(True)
 
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        layout.addWidget(close_btn)
+        header = QLabel("Equipment Items")
+        header.setFont(header_font)
+        layout.addWidget(header)
 
-        self.setLayout(layout)
+        # Create table
+        table = QTableWidget()
+        table.setRowCount(len(self.quote.line_items))
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels([
+            "#", "Pivot Amount", "Age", "Type", "Deductible", "Premium"
+        ])
+
+        # Set column widths
+        table.setColumnWidth(0, 40)
+        table.setColumnWidth(1, 120)
+        table.setColumnWidth(2, 60)
+        table.setColumnWidth(3, 120)
+        table.setColumnWidth(4, 100)
+        table.setColumnWidth(5, 120)
+
+        deductible_map = {1: "$500", 2: "$1,000", 3: "$2,500", 4: "$5,000"}
+
+        for row, item in enumerate(self.quote.line_items):
+            # Line number
+            line_num = QTableWidgetItem(str(item.line_number))
+            line_num.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 0, line_num)
+
+            # Pivot amount
+            pivot_amt = QTableWidgetItem(f"${item.pivot_amount:,.2f}")
+            pivot_amt.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            table.setItem(row, 1, pivot_amt)
+
+            # Age
+            age = QTableWidgetItem(f"{item.equipment_age_years} yrs")
+            age.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 2, age)
+
+            # Type
+            type_parts = []
+            if item.is_towable:
+                type_parts.append("Towable")
+            else:
+                type_parts.append("Standard")
+            if item.is_corner_or_long:
+                type_parts.append("Corner/Long")
+            type_str = ", ".join(type_parts)
+            table.setItem(row, 3, QTableWidgetItem(type_str))
+
+            # Deductible
+            ded = deductible_map.get(item.pivot_deductible_code, "N/A")
+            table.setItem(row, 4, QTableWidgetItem(ded))
+
+            # Premium
+            prem = QTableWidgetItem(f"${item.line_total_premium:,.2f}")
+            prem.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            prem_font = QFont()
+            prem_font.setBold(True)
+            prem.setFont(prem_font)
+            table.setItem(row, 5, prem)
+
+        table.setAlternatingRowColors(True)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.setMaximumHeight(min(300, (len(self.quote.line_items) + 1) * 35))
+
+        layout.addWidget(table)
+
+        # Total row
+        total_layout = QHBoxLayout()
+        total_layout.addStretch()
+        total_label = QLabel("TOTAL PREMIUM:")
+        total_label_font = QFont()
+        total_label_font.setBold(True)
+        total_label.setFont(total_label_font)
+
+        total_value = QLabel(f"${self.quote.total_premium:,.2f}")
+        total_value_font = QFont()
+        total_value_font.setPointSize(12)
+        total_value_font.setBold(True)
+        total_value.setFont(total_value_font)
+
+        total_layout.addWidget(total_label)
+        total_layout.addWidget(total_value)
+
+        layout.addLayout(total_layout)
 
     def _add_detail(self, grid, row, label, value, bold=False):
         """Add a detail row to the grid."""
