@@ -18,6 +18,7 @@ VALID_TABLES = {
     'customers',
     'users',
     'quotes',
+    'quote_line_items',
     'pivot_rates_under_20',
     'pivot_rates_20_to_34',
     'pivot_rates_35_plus',

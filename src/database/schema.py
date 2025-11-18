@@ -37,6 +37,31 @@ CREATE TABLE IF NOT EXISTS quotes (
     agent_name TEXT,
     quote_date TEXT DEFAULT CURRENT_DATE,
 
+    -- Location and term (common across all line items)
+    state_code TEXT NOT NULL,
+    term_months INTEGER NOT NULL,
+
+    -- Totals (aggregated from line items)
+    total_premium REAL DEFAULT 0,
+
+    -- Metadata
+    status TEXT DEFAULT 'draft',
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (state_code) REFERENCES states(code)
+);
+"""
+
+# Quote line items table (for multi-pivot support)
+CREATE_QUOTE_LINE_ITEMS_TABLE = """
+CREATE TABLE IF NOT EXISTS quote_line_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_id INTEGER NOT NULL,
+    line_number INTEGER NOT NULL,
+
     -- Equipment details
     pivot_amount REAL NOT NULL,
     ancillary_amount REAL DEFAULT 0,
@@ -51,10 +76,6 @@ CREATE TABLE IF NOT EXISTS quotes (
     -- Coverage options
     pivot_deductible_code INTEGER NOT NULL,
     ancillary_deductible_code INTEGER NOT NULL,
-    term_months INTEGER NOT NULL,
-
-    -- Location
-    state_code TEXT NOT NULL,
 
     -- Calculated results
     pivot_rate REAL,
@@ -62,7 +83,7 @@ CREATE TABLE IF NOT EXISTS quotes (
     pivot_premium REAL,
     ancillary_premium REAL,
     submersible_charge REAL,
-    total_premium REAL,
+    line_total_premium REAL,
 
     -- Alternative scenarios
     alt1_deductible INTEGER,
@@ -73,13 +94,10 @@ CREATE TABLE IF NOT EXISTS quotes (
     alt2_premium REAL,
 
     -- Metadata
-    status TEXT DEFAULT 'draft',
-    notes TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (customer_id) REFERENCES customers(id),
-    FOREIGN KEY (state_code) REFERENCES states(code)
+    FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE,
+    UNIQUE(quote_id, line_number)
 );
 """
 
@@ -229,6 +247,8 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_date ON quotes(quote_date);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_state ON quotes(state_code);",
+    "CREATE INDEX IF NOT EXISTS idx_line_items_quote ON quote_line_items(quote_id);",
+    "CREATE INDEX IF NOT EXISTS idx_line_items_line_num ON quote_line_items(quote_id, line_number);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_under20_state ON pivot_rates_under_20(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_20to34_state ON pivot_rates_20_to_34(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_35plus_state ON pivot_rates_35_plus(state_code);",
@@ -247,6 +267,7 @@ ALL_TABLES = [
     CREATE_CUSTOMERS_TABLE,
     CREATE_USERS_TABLE,
     CREATE_QUOTES_TABLE,
+    CREATE_QUOTE_LINE_ITEMS_TABLE,
     CREATE_PIVOT_RATES_UNDER_20_TABLE,
     CREATE_PIVOT_RATES_20_TO_34_TABLE,
     CREATE_PIVOT_RATES_35_PLUS_TABLE,
