@@ -1,5 +1,5 @@
 """
-CSI Pivot Quote - Main Application Entry Point
+CSI Pivot Quote - Main Application Entry Point with Authentication
 """
 
 import sys
@@ -8,11 +8,9 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QIcon
-from ui.main_window import MainWindow
 from database.db_manager import get_db
 from database.data_loader import load_states, load_sample_rates
+from ui.app_launcher import main as app_launcher_main
 
 
 def initialize_database():
@@ -35,17 +33,9 @@ def main():
     # Initialize database
     initialize_database()
 
-    # Create application
-    app = QApplication(sys.argv)
-    app.setApplicationName("CSI Pivot Quote")
-    app.setOrganizationName("Western Valley Irrigation")
-
-    # Create and show main window
-    window = MainWindow()
-    window.show()
-
-    # Run application
-    sys.exit(app.exec())
+    # Run application with authentication
+    # This will show login dialog and route users based on role
+    sys.exit(app_launcher_main())
 
 
 if __name__ == "__main__":
