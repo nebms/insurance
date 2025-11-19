@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from models.quote import QuoteRepository, Quote
 from models.customer import CustomerRepository
 from reports.pdf_generator import PDFQuoteGenerator
+from ui.quote_comparison_dialog import QuoteComparisonDialog
 
 
 class QuoteHistory(QWidget):
@@ -48,9 +49,9 @@ class QuoteHistory(QWidget):
 
         # Quotes table
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels([
-            "Quote #", "Date", "State", "Type", "Items", "Total Premium", "Status", "Actions"
+            "Compare", "Quote #", "Date", "State", "Type", "Items", "Total Premium", "Status", "Actions"
         ])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
@@ -59,8 +60,12 @@ class QuoteHistory(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+
+        # Track selected quotes for comparison
+        self.selected_quotes = []
 
         # Enable double-click to view details
         self.table.cellDoubleClicked.connect(self._on_row_double_clicked)
@@ -70,9 +75,14 @@ class QuoteHistory(QWidget):
         # Buttons
         button_layout = QHBoxLayout()
 
+        self.compare_btn = QPushButton("Compare Selected")
+        self.compare_btn.clicked.connect(self._compare_quotes)
+        self.compare_btn.setEnabled(False)
+
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self._load_quotes)
 
+        button_layout.addWidget(self.compare_btn)
         button_layout.addStretch()
         button_layout.addWidget(refresh_btn)
 
@@ -82,6 +92,10 @@ class QuoteHistory(QWidget):
 
     def _load_quotes(self):
         """Load quotes into table."""
+        # Clear selected quotes
+        self.selected_quotes = []
+        self.compare_btn.setEnabled(False)
+
         # Load quotes with line items for accurate display
         quotes = self.quote_repo.get_all(limit=100, load_line_items=True)
         self.table.setRowCount(len(quotes))
@@ -89,9 +103,19 @@ class QuoteHistory(QWidget):
         for row, quote in enumerate(quotes):
             is_multi = quote.has_multiple_items()
 
-            self.table.setItem(row, 0, QTableWidgetItem(quote.quote_number))
-            self.table.setItem(row, 1, QTableWidgetItem(quote.quote_date))
-            self.table.setItem(row, 2, QTableWidgetItem(quote.state_code))
+            # Comparison checkbox
+            checkbox_widget = QWidget()
+            checkbox_layout = QHBoxLayout(checkbox_widget)
+            checkbox_layout.setContentsMargins(0, 0, 0, 0)
+            checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            checkbox = QCheckBox()
+            checkbox.stateChanged.connect(lambda state, q=quote: self._on_checkbox_changed(state, q))
+            checkbox_layout.addWidget(checkbox)
+            self.table.setCellWidget(row, 0, checkbox_widget)
+
+            self.table.setItem(row, 1, QTableWidgetItem(quote.quote_number))
+            self.table.setItem(row, 2, QTableWidgetItem(quote.quote_date))
+            self.table.setItem(row, 3, QTableWidgetItem(quote.state_code))
 
             # Type column
             if is_multi:
@@ -99,18 +123,18 @@ class QuoteHistory(QWidget):
                 type_font = QFont()
                 type_font.setBold(True)
                 type_item.setFont(type_font)
-                self.table.setItem(row, 3, type_item)
+                self.table.setItem(row, 4, type_item)
             else:
-                self.table.setItem(row, 3, QTableWidgetItem("Single"))
+                self.table.setItem(row, 4, QTableWidgetItem("Single"))
 
             # Items column
             if is_multi:
-                self.table.setItem(row, 4, QTableWidgetItem(f"{len(quote.line_items)} items"))
+                self.table.setItem(row, 5, QTableWidgetItem(f"{len(quote.line_items)} items"))
             else:
-                self.table.setItem(row, 4, QTableWidgetItem(f"{quote.equipment_age_years} yrs"))
+                self.table.setItem(row, 5, QTableWidgetItem(f"{quote.equipment_age_years} yrs"))
 
-            self.table.setItem(row, 5, QTableWidgetItem(f"${quote.total_premium:,.2f}"))
-            self.table.setItem(row, 6, QTableWidgetItem(quote.status))
+            self.table.setItem(row, 6, QTableWidgetItem(f"${quote.total_premium:,.2f}"))
+            self.table.setItem(row, 7, QTableWidgetItem(quote.status))
 
             # Action buttons
             actions_widget = QWidget()
@@ -136,14 +160,57 @@ class QuoteHistory(QWidget):
             actions_layout.addWidget(delete_btn)
             actions_layout.addStretch()
 
-            self.table.setCellWidget(row, 7, actions_widget)
+            self.table.setCellWidget(row, 8, actions_widget)
 
     def _on_row_double_clicked(self, row, column):
         """Handle double-click on row."""
-        quote_number = self.table.item(row, 0).text()
+        quote_number = self.table.item(row, 1).text()
         quote = self.quote_repo.get_by_quote_number(quote_number)
         if quote:
             self._view_quote(quote)
+
+    def _on_checkbox_changed(self, state, quote):
+        """Handle checkbox state change for comparison."""
+        if state == Qt.CheckState.Checked.value:
+            # Add to selected quotes
+            if quote not in self.selected_quotes:
+                self.selected_quotes.append(quote)
+        else:
+            # Remove from selected quotes
+            if quote in self.selected_quotes:
+                self.selected_quotes.remove(quote)
+
+        # Enable/disable compare button
+        self.compare_btn.setEnabled(len(self.selected_quotes) >= 2)
+
+        # Update button text with count
+        if len(self.selected_quotes) >= 2:
+            self.compare_btn.setText(f"Compare Selected ({len(self.selected_quotes)})")
+        else:
+            self.compare_btn.setText("Compare Selected")
+
+    def _compare_quotes(self):
+        """Compare selected quotes."""
+        if len(self.selected_quotes) < 2:
+            QMessageBox.warning(
+                self,
+                "Selection Required",
+                "Please select at least 2 quotes to compare."
+            )
+            return
+
+        if len(self.selected_quotes) > 4:
+            QMessageBox.warning(
+                self,
+                "Too Many Quotes",
+                "Please select no more than 4 quotes to compare.\n\n"
+                "For best viewing, 2-3 quotes are recommended."
+            )
+            return
+
+        # Show comparison dialog
+        dialog = QuoteComparisonDialog(self.selected_quotes, self)
+        dialog.exec()
 
     def _view_quote(self, quote):
         """View quote details."""
