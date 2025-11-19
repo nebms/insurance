@@ -105,13 +105,25 @@ class QuoteForm(QWidget):
         layout.addWidget(QLabel("Customer Name *:"), 1, 0)
         self.customer_name = QLineEdit()
         self.customer_name.setPlaceholderText("Enter customer name")
-        layout.addWidget(self.customer_name, 1, 1, 1, 2)
+        self.customer_name.textChanged.connect(self._validate_customer_name)
+        layout.addWidget(self.customer_name, 1, 1)
+
+        # Validation indicator for customer name
+        self.customer_name_status = QLabel()
+        self.customer_name_status.setStyleSheet("color: #666; font-size: 10px;")
+        layout.addWidget(self.customer_name_status, 1, 2)
 
         # Agent Name
         layout.addWidget(QLabel("Agent Name:"), 2, 0)
         self.agent_name = QLineEdit()
         self.agent_name.setPlaceholderText("Your name")
-        layout.addWidget(self.agent_name, 2, 1, 1, 2)
+        self.agent_name.textChanged.connect(self._validate_agent_name)
+        layout.addWidget(self.agent_name, 2, 1)
+
+        # Validation indicator for agent name
+        self.agent_name_status = QLabel()
+        self.agent_name_status.setStyleSheet("color: #666; font-size: 10px;")
+        layout.addWidget(self.agent_name_status, 2, 2)
 
         group.setLayout(layout)
         return group
@@ -720,3 +732,47 @@ class QuoteForm(QWidget):
             f"Template '{template.template_name}' has been loaded.\n\n"
             f"Review the values and click Calculate Premium to generate a quote."
         )
+
+    def _validate_customer_name(self, text):
+        """Validate customer name in real-time."""
+        text = text.strip()
+
+        if not text:
+            self.customer_name.setStyleSheet("")
+            self.customer_name_status.setText("")
+            return
+
+        if len(text) < 2:
+            self.customer_name.setStyleSheet("border: 1px solid #ef4444;")
+            self.customer_name_status.setText("❌ Too short")
+            self.customer_name_status.setStyleSheet("color: #ef4444; font-size: 10px;")
+        elif len(text) > 200:
+            self.customer_name.setStyleSheet("border: 1px solid #ef4444;")
+            self.customer_name_status.setText("❌ Too long (max 200)")
+            self.customer_name_status.setStyleSheet("color: #ef4444; font-size: 10px;")
+        else:
+            self.customer_name.setStyleSheet("border: 1px solid #10b981;")
+            self.customer_name_status.setText(f"✓ Valid ({len(text)}/200)")
+            self.customer_name_status.setStyleSheet("color: #10b981; font-size: 10px;")
+
+    def _validate_agent_name(self, text):
+        """Validate agent name in real-time."""
+        text = text.strip()
+
+        if not text:
+            self.agent_name.setStyleSheet("")
+            self.agent_name_status.setText("")
+            return
+
+        if len(text) < 2:
+            self.agent_name.setStyleSheet("border: 1px solid #f59e0b;")
+            self.agent_name_status.setText("⚠ Optional but too short")
+            self.agent_name_status.setStyleSheet("color: #f59e0b; font-size: 10px;")
+        elif len(text) > 100:
+            self.agent_name.setStyleSheet("border: 1px solid #ef4444;")
+            self.agent_name_status.setText("❌ Too long (max 100)")
+            self.agent_name_status.setStyleSheet("color: #ef4444; font-size: 10px;")
+        else:
+            self.agent_name.setStyleSheet("border: 1px solid #10b981;")
+            self.agent_name_status.setText(f"✓ Valid ({len(text)}/100)")
+            self.agent_name_status.setStyleSheet("color: #10b981; font-size: 10px;")

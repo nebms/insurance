@@ -56,15 +56,27 @@ class CustomerDialog(QDialog):
 
         # Email
         form_layout.addWidget(QLabel("Email:"), 1, 0)
+        email_layout = QHBoxLayout()
         self.email_input = QLineEdit()
         self.email_input.setPlaceholderText("email@example.com")
-        form_layout.addWidget(self.email_input, 1, 1)
+        self.email_input.textChanged.connect(self._validate_email)
+        email_layout.addWidget(self.email_input)
+        self.email_status = QLabel()
+        self.email_status.setStyleSheet("color: #666; font-size: 10px;")
+        email_layout.addWidget(self.email_status)
+        form_layout.addLayout(email_layout, 1, 1)
 
         # Phone
         form_layout.addWidget(QLabel("Phone:"), 2, 0)
+        phone_layout = QHBoxLayout()
         self.phone_input = QLineEdit()
         self.phone_input.setPlaceholderText("(555) 123-4567")
-        form_layout.addWidget(self.phone_input, 2, 1)
+        self.phone_input.textChanged.connect(self._validate_phone)
+        phone_layout.addWidget(self.phone_input)
+        self.phone_status = QLabel()
+        self.phone_status.setStyleSheet("color: #666; font-size: 10px;")
+        phone_layout.addWidget(self.phone_status)
+        form_layout.addLayout(phone_layout, 2, 1)
 
         # Address
         form_layout.addWidget(QLabel("Address:"), 3, 0)
@@ -275,3 +287,49 @@ class CustomerDialog(QDialog):
     def get_customer(self):
         """Get the customer object."""
         return self.customer
+
+    def _validate_email(self, text):
+        """Validate email format in real-time."""
+        text = text.strip()
+
+        if not text:
+            self.email_input.setStyleSheet("")
+            self.email_status.setText("")
+            return
+
+        # Email regex pattern
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
+        if re.match(email_pattern, text):
+            self.email_input.setStyleSheet("border: 1px solid #10b981;")
+            self.email_status.setText("✓ Valid email")
+            self.email_status.setStyleSheet("color: #10b981; font-size: 10px;")
+        else:
+            self.email_input.setStyleSheet("border: 1px solid #ef4444;")
+            self.email_status.setText("❌ Invalid format")
+            self.email_status.setStyleSheet("color: #ef4444; font-size: 10px;")
+
+    def _validate_phone(self, text):
+        """Validate phone number in real-time."""
+        text = text.strip()
+
+        if not text:
+            self.phone_input.setStyleSheet("")
+            self.phone_status.setText("")
+            return
+
+        # Remove common formatting characters
+        digits_only = re.sub(r'[^\d]', '', text)
+
+        if len(digits_only) < 10:
+            self.phone_input.setStyleSheet("border: 1px solid #f59e0b;")
+            self.phone_status.setText("⚠ Too short")
+            self.phone_status.setStyleSheet("color: #f59e0b; font-size: 10px;")
+        elif len(digits_only) > 15:
+            self.phone_input.setStyleSheet("border: 1px solid #ef4444;")
+            self.phone_status.setText("❌ Too long")
+            self.phone_status.setStyleSheet("color: #ef4444; font-size: 10px;")
+        else:
+            self.phone_input.setStyleSheet("border: 1px solid #10b981;")
+            self.phone_status.setText(f"✓ Valid ({len(digits_only)} digits)")
+            self.phone_status.setStyleSheet("color: #10b981; font-size: 10px;")
