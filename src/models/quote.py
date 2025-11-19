@@ -27,6 +27,12 @@ class Quote:
         # Totals (aggregated from line items)
         self.total_premium = kwargs.get('total_premium', 0.0)
 
+        # Renewal tracking
+        self.policy_start_date = kwargs.get('policy_start_date')
+        self.policy_end_date = kwargs.get('policy_end_date')
+        self.is_bound = kwargs.get('is_bound', 0)
+        self.original_quote_id = kwargs.get('original_quote_id')
+
         # Metadata
         self.status = kwargs.get('status', 'draft')
         self.notes = kwargs.get('notes', '')

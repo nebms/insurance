@@ -20,6 +20,7 @@ VALID_TABLES = {
     'quotes',
     'quote_line_items',
     'quote_templates',
+    'renewals',
     'pivot_rates_under_20',
     'pivot_rates_20_to_34',
     'pivot_rates_35_plus',

@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS quotes (
     -- Totals (aggregated from line items)
     total_premium REAL DEFAULT 0,
 
+    -- Renewal tracking
+    policy_start_date TEXT,
+    policy_end_date TEXT,
+    is_bound INTEGER DEFAULT 0,
+    original_quote_id INTEGER,
+
     -- Metadata
     status TEXT DEFAULT 'draft',
     notes TEXT,
@@ -51,7 +57,8 @@ CREATE TABLE IF NOT EXISTS quotes (
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (customer_id) REFERENCES customers(id),
-    FOREIGN KEY (state_code) REFERENCES states(code)
+    FOREIGN KEY (state_code) REFERENCES states(code),
+    FOREIGN KEY (original_quote_id) REFERENCES quotes(id)
 );
 """
 
@@ -271,12 +278,58 @@ CREATE TABLE IF NOT EXISTS rate_change_log (
 );
 """
 
+# Renewals table for tracking policy renewals
+CREATE_RENEWALS_TABLE = """
+CREATE TABLE IF NOT EXISTS renewals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    original_quote_id INTEGER NOT NULL,
+    renewal_quote_id INTEGER,
+
+    -- Renewal timeline
+    policy_end_date TEXT NOT NULL,
+    renewal_due_date TEXT NOT NULL,
+
+    -- Renewal status
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'generated', 'sent', 'bound', 'declined', 'lapsed')),
+
+    -- Reminder tracking
+    reminder_90_days_sent INTEGER DEFAULT 0,
+    reminder_90_days_date TEXT,
+    reminder_60_days_sent INTEGER DEFAULT 0,
+    reminder_60_days_date TEXT,
+    reminder_30_days_sent INTEGER DEFAULT 0,
+    reminder_30_days_date TEXT,
+    reminder_final_sent INTEGER DEFAULT 0,
+    reminder_final_date TEXT,
+
+    -- Renewal quote details (when generated)
+    renewal_generated_date TEXT,
+    renewal_sent_date TEXT,
+    renewal_premium REAL,
+    premium_change_percent REAL,
+
+    -- Outcome tracking
+    outcome_date TEXT,
+    outcome_notes TEXT,
+    declined_reason TEXT,
+
+    -- Metadata
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (original_quote_id) REFERENCES quotes(id) ON DELETE CASCADE,
+    FOREIGN KEY (renewal_quote_id) REFERENCES quotes(id)
+);
+"""
+
 # Performance indexes
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_date ON quotes(quote_date);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_state ON quotes(state_code);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_policy_end ON quotes(policy_end_date);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_is_bound ON quotes(is_bound);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_quote ON quote_line_items(quote_id);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_line_num ON quote_line_items(quote_id, line_number);",
     "CREATE INDEX IF NOT EXISTS idx_templates_state ON quote_templates(state_code);",
@@ -291,6 +344,11 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_rate_changes_user ON rate_change_log(user_id);",
     "CREATE INDEX IF NOT EXISTS idx_rate_changes_state ON rate_change_log(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_rate_changes_table ON rate_change_log(table_name);",
+    "CREATE INDEX IF NOT EXISTS idx_renewals_original_quote ON renewals(original_quote_id);",
+    "CREATE INDEX IF NOT EXISTS idx_renewals_renewal_quote ON renewals(renewal_quote_id);",
+    "CREATE INDEX IF NOT EXISTS idx_renewals_status ON renewals(status);",
+    "CREATE INDEX IF NOT EXISTS idx_renewals_policy_end ON renewals(policy_end_date);",
+    "CREATE INDEX IF NOT EXISTS idx_renewals_due_date ON renewals(renewal_due_date);",
 ]
 
 # All tables in creation order
@@ -301,6 +359,7 @@ ALL_TABLES = [
     CREATE_QUOTES_TABLE,
     CREATE_QUOTE_LINE_ITEMS_TABLE,
     CREATE_QUOTE_TEMPLATES_TABLE,
+    CREATE_RENEWALS_TABLE,
     CREATE_PIVOT_RATES_UNDER_20_TABLE,
     CREATE_PIVOT_RATES_20_TO_34_TABLE,
     CREATE_PIVOT_RATES_35_PLUS_TABLE,

@@ -13,6 +13,8 @@ from PyQt6.QtGui import QAction, QFont, QKeySequence
 from .quote_form import QuoteForm
 from .customer_mgmt import CustomerManagement
 from .quote_history import QuoteHistory
+from .renewal_dashboard import RenewalDashboard
+from .renewal_alert_widget import RenewalAlertDialog, check_and_notify_renewals
 
 
 class MainWindow(QMainWindow):
@@ -30,6 +32,9 @@ class MainWindow(QMainWindow):
 
         # Show welcome message
         self.statusBar().showMessage("Ready to create quotes", 3000)
+
+        # Check for urgent renewals and show alert
+        self._check_renewal_alerts()
 
     def _create_menu_bar(self):
         """Create application menu bar."""
@@ -74,6 +79,12 @@ class MainWindow(QMainWindow):
         quote_history_action.setStatusTip("Go to quote history (Ctrl+H)")
         quote_history_action.triggered.connect(self._go_to_history)
         view_menu.addAction(quote_history_action)
+
+        renewals_action = QAction("&Renewals", self)
+        renewals_action.setShortcut("Ctrl+R")
+        renewals_action.setStatusTip("Go to renewal dashboard (Ctrl+R)")
+        renewals_action.triggered.connect(self._go_to_renewals)
+        view_menu.addAction(renewals_action)
 
         customers_action = QAction("&Customers", self)
         customers_action.setShortcut("Ctrl+U")
@@ -139,6 +150,10 @@ class MainWindow(QMainWindow):
         self.quote_history = QuoteHistory(self)
         self.tabs.addTab(self.quote_history, "Quote History")
 
+        # Renewal Dashboard tab
+        self.renewal_dashboard = RenewalDashboard(self)
+        self.tabs.addTab(self.renewal_dashboard, "Renewals")
+
         # Customer Management tab
         self.customer_mgmt = CustomerManagement(self)
         self.tabs.addTab(self.customer_mgmt, "Customers")
@@ -200,6 +215,11 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.quote_history)
         self.statusBar().showMessage("Quote History", 1000)
 
+    def _go_to_renewals(self):
+        """Go to renewal dashboard (Ctrl+R)."""
+        self.tabs.setCurrentWidget(self.renewal_dashboard)
+        self.statusBar().showMessage("Renewal Dashboard", 1000)
+
     def _go_to_customers(self):
         """Go to customer management (Ctrl+U)."""
         self.tabs.setCurrentWidget(self.customer_mgmt)
@@ -212,6 +232,9 @@ class MainWindow(QMainWindow):
         if current_widget == self.quote_history:
             self.quote_history._load_quotes()
             self.statusBar().showMessage("Quote history refreshed", 2000)
+        elif current_widget == self.renewal_dashboard:
+            self.renewal_dashboard._load_renewals()
+            self.statusBar().showMessage("Renewal dashboard refreshed", 2000)
         elif current_widget == self.customer_mgmt:
             self.customer_mgmt._load_customers()
             self.statusBar().showMessage("Customer list refreshed", 2000)
@@ -253,6 +276,7 @@ class MainWindow(QMainWindow):
         <h3>Navigation</h3>
         <table cellpadding='5'>
         <tr><td><b>Ctrl+H</b></td><td>Go to Quote History</td></tr>
+        <tr><td><b>Ctrl+R</b></td><td>Go to Renewals</td></tr>
         <tr><td><b>Ctrl+U</b></td><td>Go to Customers</td></tr>
         <tr><td><b>F5</b></td><td>Refresh Current View</td></tr>
         </table>
@@ -276,3 +300,26 @@ class MainWindow(QMainWindow):
             "Keyboard Shortcuts",
             shortcuts_text
         )
+
+    def _check_renewal_alerts(self):
+        """Check for urgent renewals and show alerts."""
+        try:
+            # Get renewal notification data
+            renewal_info = check_and_notify_renewals(self)
+
+            # Show alert dialog if there are urgent renewals
+            if renewal_info['should_alert']:
+                # Use QTimer to show after main window is fully initialized
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(500, lambda: RenewalAlertDialog.show_if_urgent(self))
+
+                # Update status bar with renewal count
+                if renewal_info['urgent_count'] > 0:
+                    self.statusBar().showMessage(
+                        f"⚠️ {renewal_info['urgent_count']} urgent renewal(s) - Check Renewal Dashboard",
+                        10000  # Show for 10 seconds
+                    )
+
+        except Exception as e:
+            # Silently fail - don't interrupt startup
+            print(f"Warning: Could not check renewal alerts: {e}")
