@@ -6,13 +6,14 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QLineEdit, QLabel, QMessageBox,
-    QDialog, QGridLayout, QTextEdit
+    QDialog, QGridLayout, QTextEdit, QComboBox,
+    QDateEdit, QGroupBox, QCheckBox, QDoubleSpinBox
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
 import os
 import platform
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import sys
 from pathlib import Path
@@ -47,6 +48,10 @@ class QuoteHistory(QWidget):
         title.setFont(title_font)
         layout.addWidget(title)
 
+        # Search and Filter Section
+        filter_group = self._create_filter_section()
+        layout.addWidget(filter_group)
+
         # Quotes table
         self.table = QTableWidget()
         self.table.setColumnCount(9)
@@ -64,8 +69,15 @@ class QuoteHistory(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
+        # Enable sorting
+        self.table.setSortingEnabled(True)
+        self.table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
+
         # Track selected quotes for comparison
         self.selected_quotes = []
+
+        # Store all quotes for filtering
+        self.all_quotes = []
 
         # Enable double-click to view details
         self.table.cellDoubleClicked.connect(self._on_row_double_clicked)
@@ -90,14 +102,207 @@ class QuoteHistory(QWidget):
 
         self.setLayout(layout)
 
+    def _create_filter_section(self):
+        """Create search and filter controls."""
+        group = QGroupBox("Search & Filters")
+        layout = QGridLayout()
+
+        # Row 1: Search and Quick Filters
+        row = 0
+
+        # Search box
+        layout.addWidget(QLabel("Search:"), row, 0)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Quote #, Customer, or Agent name...")
+        self.search_input.textChanged.connect(self._apply_filters)
+        self.search_input.setClearButtonEnabled(True)
+        layout.addWidget(self.search_input, row, 1, 1, 2)
+
+        # State filter
+        layout.addWidget(QLabel("State:"), row, 3)
+        self.state_filter = QComboBox()
+        self.state_filter.addItem("All States", None)
+        self._load_states_for_filter()
+        self.state_filter.currentIndexChanged.connect(self._apply_filters)
+        layout.addWidget(self.state_filter, row, 4)
+
+        # Status filter
+        layout.addWidget(QLabel("Status:"), row, 5)
+        self.status_filter = QComboBox()
+        self.status_filter.addItem("All Statuses", None)
+        self.status_filter.addItem("Draft", "draft")
+        self.status_filter.addItem("Saved", "saved")
+        self.status_filter.currentIndexChanged.connect(self._apply_filters)
+        layout.addWidget(self.status_filter, row, 6)
+
+        # Row 2: Date Range and Premium Range
+        row += 1
+
+        # Date from
+        layout.addWidget(QLabel("Date From:"), row, 0)
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDate(QDate.currentDate().addMonths(-3))  # Default: 3 months ago
+        self.date_from.setDisplayFormat("MM/dd/yyyy")
+        self.date_from.dateChanged.connect(self._apply_filters)
+        layout.addWidget(self.date_from, row, 1)
+
+        # Date to
+        layout.addWidget(QLabel("To:"), row, 2)
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDate(QDate.currentDate())
+        self.date_to.setDisplayFormat("MM/dd/yyyy")
+        self.date_to.dateChanged.connect(self._apply_filters)
+        layout.addWidget(self.date_to, row, 3)
+
+        # Premium min
+        layout.addWidget(QLabel("Premium Min:"), row, 4)
+        self.premium_min = QDoubleSpinBox()
+        self.premium_min.setPrefix("$ ")
+        self.premium_min.setRange(0, 999999)
+        self.premium_min.setValue(0)
+        self.premium_min.setGroupSeparatorShown(True)
+        self.premium_min.valueChanged.connect(self._apply_filters)
+        layout.addWidget(self.premium_min, row, 5)
+
+        # Premium max
+        layout.addWidget(QLabel("Max:"), row, 6)
+        self.premium_max = QDoubleSpinBox()
+        self.premium_max.setPrefix("$ ")
+        self.premium_max.setRange(0, 999999)
+        self.premium_max.setValue(999999)
+        self.premium_max.setGroupSeparatorShown(True)
+        self.premium_max.valueChanged.connect(self._apply_filters)
+        layout.addWidget(self.premium_max, row, 7)
+
+        # Row 3: Type Filter and Action Buttons
+        row += 1
+
+        # Type filter (single/multi-pivot)
+        layout.addWidget(QLabel("Type:"), row, 0)
+        self.type_filter = QComboBox()
+        self.type_filter.addItem("All Types", None)
+        self.type_filter.addItem("Single Pivot", "single")
+        self.type_filter.addItem("Multi-Pivot", "multi")
+        self.type_filter.currentIndexChanged.connect(self._apply_filters)
+        layout.addWidget(self.type_filter, row, 1)
+
+        # Clear filters button
+        clear_btn = QPushButton("Clear Filters")
+        clear_btn.clicked.connect(self._clear_filters)
+        layout.addWidget(clear_btn, row, 6)
+
+        # Results count label
+        self.results_label = QLabel("Showing: 0 quotes")
+        self.results_label.setStyleSheet("color: #666; font-style: italic;")
+        layout.addWidget(self.results_label, row, 7)
+
+        group.setLayout(layout)
+        return group
+
+    def _load_states_for_filter(self):
+        """Load states into filter dropdown."""
+        from database.db_manager import get_db
+        db = get_db()
+        states = db.execute_query("SELECT DISTINCT code FROM states ORDER BY code")
+        for state in states:
+            self.state_filter.addItem(state['code'], state['code'])
+
+    def _clear_filters(self):
+        """Clear all filter inputs."""
+        self.search_input.clear()
+        self.state_filter.setCurrentIndex(0)
+        self.status_filter.setCurrentIndex(0)
+        self.type_filter.setCurrentIndex(0)
+        self.date_from.setDate(QDate.currentDate().addMonths(-3))
+        self.date_to.setDate(QDate.currentDate())
+        self.premium_min.setValue(0)
+        self.premium_max.setValue(999999)
+        self._apply_filters()
+
+    def _apply_filters(self):
+        """Apply current filters to the quote list."""
+        # Get filter values
+        search_text = self.search_input.text().lower()
+        state_code = self.state_filter.currentData()
+        status = self.status_filter.currentData()
+        quote_type = self.type_filter.currentData()
+        date_from = self.date_from.date().toPyDate()
+        date_to = self.date_to.date().toPyDate()
+        premium_min = self.premium_min.value()
+        premium_max = self.premium_max.value()
+
+        # Filter quotes
+        filtered_quotes = []
+        for quote in self.all_quotes:
+            # Search filter (quote number, customer name, agent name)
+            if search_text:
+                searchable = f"{quote.quote_number} {quote.agent_name or ''}".lower()
+                # Also search customer name if available
+                if hasattr(quote, 'customer_name'):
+                    searchable += f" {quote.customer_name}".lower()
+                if search_text not in searchable:
+                    continue
+
+            # State filter
+            if state_code and quote.state_code != state_code:
+                continue
+
+            # Status filter
+            if status and quote.status != status:
+                continue
+
+            # Type filter
+            if quote_type:
+                is_multi = quote.has_multiple_items()
+                if quote_type == "single" and is_multi:
+                    continue
+                if quote_type == "multi" and not is_multi:
+                    continue
+
+            # Date range filter
+            try:
+                quote_date = datetime.strptime(quote.quote_date, "%Y-%m-%d").date()
+                if quote_date < date_from or quote_date > date_to:
+                    continue
+            except:
+                pass  # Skip date filtering if date parsing fails
+
+            # Premium range filter
+            if quote.total_premium < premium_min or quote.total_premium > premium_max:
+                continue
+
+            filtered_quotes.append(quote)
+
+        # Update table with filtered results
+        self._populate_table(filtered_quotes)
+
+        # Update results count
+        self.results_label.setText(f"Showing: {len(filtered_quotes)} of {len(self.all_quotes)} quotes")
+
+    def _on_header_clicked(self, column):
+        """Handle column header click for sorting."""
+        # Sorting is handled automatically by Qt
+        pass
+
     def _load_quotes(self):
-        """Load quotes into table."""
+        """Load quotes from database."""
         # Clear selected quotes
         self.selected_quotes = []
         self.compare_btn.setEnabled(False)
 
-        # Load quotes with line items for accurate display
-        quotes = self.quote_repo.get_all(limit=100, load_line_items=True)
+        # Load all quotes with line items (no limit for filtering)
+        self.all_quotes = self.quote_repo.get_all(limit=1000, load_line_items=True)
+
+        # Apply filters to display
+        self._apply_filters()
+
+    def _populate_table(self, quotes):
+        """Populate table with quote data."""
+        # Temporarily disable sorting during population
+        self.table.setSortingEnabled(False)
+
         self.table.setRowCount(len(quotes))
 
         for row, quote in enumerate(quotes):
@@ -161,6 +366,9 @@ class QuoteHistory(QWidget):
             actions_layout.addStretch()
 
             self.table.setCellWidget(row, 8, actions_widget)
+
+        # Re-enable sorting after population
+        self.table.setSortingEnabled(True)
 
     def _on_row_double_clicked(self, row, column):
         """Handle double-click on row."""
