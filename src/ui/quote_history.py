@@ -23,6 +23,7 @@ from models.quote import QuoteRepository, Quote
 from models.customer import CustomerRepository
 from reports.pdf_generator import PDFQuoteGenerator
 from ui.quote_comparison_dialog import QuoteComparisonDialog
+from ui.loading_widgets import LoadingSpinner
 
 
 class QuoteHistory(QWidget):
@@ -191,12 +192,20 @@ class QuoteHistory(QWidget):
         # Clear filters button
         clear_btn = QPushButton("Clear Filters")
         clear_btn.clicked.connect(self._clear_filters)
-        layout.addWidget(clear_btn, row, 6)
+        layout.addWidget(clear_btn, row, 5)
 
-        # Results count label
+        # Loading indicator and results in horizontal layout
+        results_layout = QHBoxLayout()
+        self.loading_spinner = LoadingSpinner(self, size=12)
+        self.loading_spinner.hide()
+        results_layout.addWidget(self.loading_spinner)
+
         self.results_label = QLabel("Showing: 0 quotes")
         self.results_label.setStyleSheet("color: #666; font-style: italic;")
-        layout.addWidget(self.results_label, row, 7)
+        results_layout.addWidget(self.results_label)
+        results_layout.addStretch()
+
+        layout.addLayout(results_layout, row, 6, 1, 2)
 
         group.setLayout(layout)
         return group
@@ -288,15 +297,23 @@ class QuoteHistory(QWidget):
 
     def _load_quotes(self):
         """Load quotes from database."""
+        # Show loading indicator
+        self.loading_spinner.start()
+        self.results_label.setText("Loading quotes...")
+
         # Clear selected quotes
         self.selected_quotes = []
         self.compare_btn.setEnabled(False)
 
-        # Load all quotes with line items (no limit for filtering)
-        self.all_quotes = self.quote_repo.get_all(limit=1000, load_line_items=True)
+        try:
+            # Load all quotes with line items (no limit for filtering)
+            self.all_quotes = self.quote_repo.get_all(limit=1000, load_line_items=True)
 
-        # Apply filters to display
-        self._apply_filters()
+            # Apply filters to display
+            self._apply_filters()
+        finally:
+            # Hide loading indicator
+            self.loading_spinner.stop()
 
     def _populate_table(self, quotes):
         """Populate table with quote data."""
