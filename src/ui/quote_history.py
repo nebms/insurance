@@ -24,6 +24,8 @@ from models.customer import CustomerRepository
 from reports.pdf_generator import PDFQuoteGenerator
 from ui.quote_comparison_dialog import QuoteComparisonDialog
 from ui.loading_widgets import LoadingSpinner
+from ui.bind_quote_dialog import BindQuoteDialog
+from ui.edit_policy_dialog import EditPolicyDialog
 
 
 class QuoteHistory(QWidget):
@@ -366,20 +368,34 @@ class QuoteHistory(QWidget):
 
             view_btn = QPushButton("View")
             view_btn.clicked.connect(lambda checked, q=quote: self._view_quote(q))
+            actions_layout.addWidget(view_btn)
+
+            # Conditional buttons based on binding status
+            if quote.is_bound:
+                # Edit Policy Info button for bound quotes
+                edit_policy_btn = QPushButton("Edit Policy")
+                edit_policy_btn.setStyleSheet("background-color: #10b981; color: white;")
+                edit_policy_btn.clicked.connect(lambda checked, q=quote: self._edit_policy(q))
+                actions_layout.addWidget(edit_policy_btn)
+            else:
+                # Bind Quote button for unbound quotes
+                bind_btn = QPushButton("Bind Quote")
+                bind_btn.setStyleSheet("background-color: #3b82f6; color: white;")
+                bind_btn.clicked.connect(lambda checked, q=quote: self._bind_quote(q))
+                actions_layout.addWidget(bind_btn)
 
             duplicate_btn = QPushButton("Duplicate")
             duplicate_btn.clicked.connect(lambda checked, q=quote: self._duplicate_quote(q))
+            actions_layout.addWidget(duplicate_btn)
 
             pdf_btn = QPushButton("Export PDF")
             pdf_btn.clicked.connect(lambda checked, q=quote: self._export_pdf(q))
+            actions_layout.addWidget(pdf_btn)
 
             delete_btn = QPushButton("Delete")
             delete_btn.clicked.connect(lambda checked, q=quote: self._delete_quote(q))
-
-            actions_layout.addWidget(view_btn)
-            actions_layout.addWidget(duplicate_btn)
-            actions_layout.addWidget(pdf_btn)
             actions_layout.addWidget(delete_btn)
+
             actions_layout.addStretch()
 
             self.table.setCellWidget(row, 8, actions_widget)
@@ -604,6 +620,20 @@ class QuoteHistory(QWidget):
                 "Duplication Error",
                 f"Error duplicating quote:\n{str(e)}"
             )
+
+    def _bind_quote(self, quote):
+        """Open bind quote dialog."""
+        dialog = BindQuoteDialog(quote.id, self)
+        if dialog.exec():
+            # Refresh table to show updated status
+            self._load_quotes()
+
+    def _edit_policy(self, quote):
+        """Open edit policy info dialog."""
+        dialog = EditPolicyDialog(quote.id, self)
+        if dialog.exec():
+            # Refresh table to show updated info
+            self._load_quotes()
 
 
 class QuoteDetailsDialog(QDialog):

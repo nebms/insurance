@@ -44,6 +44,17 @@ CREATE TABLE IF NOT EXISTS quotes (
     -- Totals (aggregated from line items)
     total_premium REAL DEFAULT 0,
 
+    -- Policy binding information
+    policy_number TEXT,
+    bound_date TEXT,
+    bound_by_user_id INTEGER,
+    effective_date TEXT,
+    expiration_date TEXT,
+    carrier_name TEXT,
+    payment_status TEXT DEFAULT 'pending',
+    payment_method TEXT,
+    policy_received_date TEXT,
+
     -- Renewal tracking
     policy_start_date TEXT,
     policy_end_date TEXT,
@@ -58,7 +69,8 @@ CREATE TABLE IF NOT EXISTS quotes (
 
     FOREIGN KEY (customer_id) REFERENCES customers(id),
     FOREIGN KEY (state_code) REFERENCES states(code),
-    FOREIGN KEY (original_quote_id) REFERENCES quotes(id)
+    FOREIGN KEY (original_quote_id) REFERENCES quotes(id),
+    FOREIGN KEY (bound_by_user_id) REFERENCES users(id)
 );
 """
 
@@ -322,6 +334,25 @@ CREATE TABLE IF NOT EXISTS renewals (
 );
 """
 
+# Policy documents table for document attachments
+CREATE_POLICY_DOCUMENTS_TABLE = """
+CREATE TABLE IF NOT EXISTS policy_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_id INTEGER NOT NULL,
+    document_type TEXT NOT NULL,
+    document_name TEXT,
+    file_path TEXT,
+    uploaded_date TEXT DEFAULT CURRENT_TIMESTAMP,
+    uploaded_by_user_id INTEGER,
+    received_from TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE,
+    FOREIGN KEY (uploaded_by_user_id) REFERENCES users(id)
+);
+"""
+
 # Performance indexes
 CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id);",
@@ -330,6 +361,10 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_state ON quotes(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_policy_end ON quotes(policy_end_date);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_is_bound ON quotes(is_bound);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_policy_number ON quotes(policy_number);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_bound_date ON quotes(bound_date);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_effective_date ON quotes(effective_date);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_payment_status ON quotes(payment_status);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_quote ON quote_line_items(quote_id);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_line_num ON quote_line_items(quote_id, line_number);",
     "CREATE INDEX IF NOT EXISTS idx_templates_state ON quote_templates(state_code);",
@@ -349,6 +384,8 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_renewals_status ON renewals(status);",
     "CREATE INDEX IF NOT EXISTS idx_renewals_policy_end ON renewals(policy_end_date);",
     "CREATE INDEX IF NOT EXISTS idx_renewals_due_date ON renewals(renewal_due_date);",
+    "CREATE INDEX IF NOT EXISTS idx_policy_docs_quote ON policy_documents(quote_id);",
+    "CREATE INDEX IF NOT EXISTS idx_policy_docs_type ON policy_documents(document_type);",
 ]
 
 # All tables in creation order
@@ -360,6 +397,7 @@ ALL_TABLES = [
     CREATE_QUOTE_LINE_ITEMS_TABLE,
     CREATE_QUOTE_TEMPLATES_TABLE,
     CREATE_RENEWALS_TABLE,
+    CREATE_POLICY_DOCUMENTS_TABLE,
     CREATE_PIVOT_RATES_UNDER_20_TABLE,
     CREATE_PIVOT_RATES_20_TO_34_TABLE,
     CREATE_PIVOT_RATES_35_PLUS_TABLE,

@@ -27,7 +27,18 @@ class Quote:
         # Totals (aggregated from line items)
         self.total_premium = kwargs.get('total_premium', 0.0)
 
-        # Renewal tracking
+        # Policy binding information
+        self.policy_number = kwargs.get('policy_number')
+        self.bound_date = kwargs.get('bound_date')
+        self.bound_by_user_id = kwargs.get('bound_by_user_id')
+        self.effective_date = kwargs.get('effective_date')
+        self.expiration_date = kwargs.get('expiration_date')
+        self.carrier_name = kwargs.get('carrier_name', '')
+        self.payment_status = kwargs.get('payment_status', 'pending')
+        self.payment_method = kwargs.get('payment_method', '')
+        self.policy_received_date = kwargs.get('policy_received_date')
+
+        # Renewal tracking (legacy - kept for backward compatibility)
         self.policy_start_date = kwargs.get('policy_start_date')
         self.policy_end_date = kwargs.get('policy_end_date')
         self.is_bound = kwargs.get('is_bound', 0)
