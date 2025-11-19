@@ -6,10 +6,10 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox,
     QPushButton, QGroupBox, QCheckBox, QRadioButton,
-    QButtonGroup, QMessageBox
+    QButtonGroup, QMessageBox, QCompleter
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QSortFilterProxyModel
+from PyQt6.QtGui import QFont, QStandardItemModel, QStandardItem
 
 import sys
 from pathlib import Path
@@ -313,18 +313,46 @@ class QuoteForm(QWidget):
         self._load_customers()
 
     def _load_customers(self):
-        """Load customers into dropdown."""
+        """Load customers into dropdown with enhanced search."""
         customers = self.customer_repo.get_all()
+
         self.customer_combo.clear()
         self.customer_combo.addItem("-- New Customer --", None)
 
+        # Store customer objects for lookup
+        self.customer_map = {}
+
+        # Add customers with enhanced display (name + email/phone)
         for customer in customers:
-            self.customer_combo.addItem(customer.name, customer.id)
+            # Create display text with additional info
+            display_text = customer.name
+
+            # Add email or phone if available
+            extra_info = []
+            if customer.email:
+                extra_info.append(customer.email)
+            elif customer.phone:
+                extra_info.append(customer.phone)
+
+            if extra_info:
+                display_text += f" ({extra_info[0]})"
+
+            self.customer_combo.addItem(display_text, customer.id)
+            self.customer_map[customer.id] = customer
+
+        # Set up fuzzy autocomplete
+        completer = QCompleter(self.customer_combo)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)  # Fuzzy matching
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.customer_combo.setCompleter(completer)
 
     def _on_customer_changed(self, text):
         """Handle customer selection change."""
         if text and text != "-- New Customer --":
-            self.customer_name.setText(text)
+            # Extract customer name (before parentheses if they exist)
+            customer_name = text.split(" (")[0] if " (" in text else text
+            self.customer_name.setText(customer_name)
 
     def _create_new_customer(self):
         """Open dialog to create new customer."""
