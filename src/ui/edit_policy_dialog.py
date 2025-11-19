@@ -6,17 +6,23 @@ Allows updating policy details after binding (policy number, payment status, etc
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
     QLabel, QPushButton, QLineEdit, QDateEdit, QComboBox,
-    QTextEdit, QMessageBox, QRadioButton, QButtonGroup, QListWidget
+    QTextEdit, QMessageBox, QRadioButton, QButtonGroup, QListWidget,
+    QListWidgetItem
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
 from datetime import datetime, date
 from pathlib import Path
+import subprocess
+import sys
+import os
 
 from models.quote import Quote, QuoteRepository
 from models.customer import CustomerRepository
 from models.policy_document import PolicyDocumentRepository
 from services.binding_service import BindingService
+from services.document_service import DocumentService
+from ui.document_upload_dialog import DocumentUploadDialog
 
 
 class EditPolicyDialog(QDialog):
@@ -29,6 +35,7 @@ class EditPolicyDialog(QDialog):
         self.customer_repo = CustomerRepository()
         self.document_repo = PolicyDocumentRepository()
         self.binding_service = BindingService()
+        self.document_service = DocumentService()
 
         self.quote = None
         self.customer = None
@@ -264,19 +271,35 @@ class EditPolicyDialog(QDialog):
                 doc_info = f"📄 {doc.document_name} ({doc.document_type})"
                 if doc.uploaded_date:
                     doc_info += f" - {doc.uploaded_date[:10]}"
-                self.doc_list.addItem(doc_info)
+                item = QListWidgetItem(doc_info)
+                item.setData(Qt.ItemDataRole.UserRole, doc.id)  # Store document ID
+                self.doc_list.addItem(item)
             layout.addWidget(self.doc_list)
 
             # Document count
             count_label = QLabel(f"Total: {len(self.documents)} document(s)")
             count_label.setStyleSheet("color: #6b7280; font-size: 11px;")
             layout.addWidget(count_label)
+
+            # Document action buttons
+            doc_actions_layout = QHBoxLayout()
+
+            view_btn = QPushButton("View Document")
+            view_btn.clicked.connect(self._view_document)
+            doc_actions_layout.addWidget(view_btn)
+
+            delete_btn = QPushButton("Delete Document")
+            delete_btn.setStyleSheet("color: #dc2626;")
+            delete_btn.clicked.connect(self._delete_document)
+            doc_actions_layout.addWidget(delete_btn)
+
+            layout.addLayout(doc_actions_layout)
         else:
             no_docs = QLabel("<i>No documents attached yet</i>")
             no_docs.setStyleSheet("color: #6b7280;")
             layout.addWidget(no_docs)
 
-        # Upload button (placeholder)
+        # Upload button
         upload_btn = QPushButton("+ Upload Document")
         upload_btn.clicked.connect(self._upload_document)
         layout.addWidget(upload_btn)
@@ -285,13 +308,132 @@ class EditPolicyDialog(QDialog):
         return group
 
     def _upload_document(self):
-        """Handle document upload (placeholder)."""
-        QMessageBox.information(
+        """Handle document upload."""
+        dialog = DocumentUploadDialog(self.quote_id, self)
+        if dialog.exec():
+            # Refresh documents list
+            self.documents = self.document_repo.get_by_quote(self.quote_id)
+            # Recreate the documents section to show new document
+            self._refresh_documents_section()
+
+    def _view_document(self):
+        """Open selected document in system viewer."""
+        if not self.doc_list or not self.doc_list.currentItem():
+            QMessageBox.warning(self, "No Selection", "Please select a document to view")
+            return
+
+        # Get selected document ID
+        doc_id = self.doc_list.currentItem().data(Qt.ItemDataRole.UserRole)
+        document = self.document_repo.get_by_id(doc_id)
+
+        if not document:
+            QMessageBox.warning(self, "Error", "Document not found")
+            return
+
+        # Get file path
+        file_path = Path(document.file_path)
+        if not file_path.exists():
+            QMessageBox.warning(
+                self,
+                "File Not Found",
+                f"Document file not found:\n{document.file_path}\n\n"
+                "The file may have been moved or deleted."
+            )
+            return
+
+        # Open file with default system application
+        try:
+            if sys.platform == 'win32':
+                os.startfile(str(file_path))
+            elif sys.platform == 'darwin':  # macOS
+                subprocess.run(['open', str(file_path)])
+            else:  # linux
+                subprocess.run(['xdg-open', str(file_path)])
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "Error Opening File",
+                f"Could not open document:\n{str(e)}\n\n"
+                f"File location: {file_path}"
+            )
+
+    def _delete_document(self):
+        """Delete selected document."""
+        if not self.doc_list or not self.doc_list.currentItem():
+            QMessageBox.warning(self, "No Selection", "Please select a document to delete")
+            return
+
+        # Get selected document ID
+        doc_id = self.doc_list.currentItem().data(Qt.ItemDataRole.UserRole)
+        document = self.document_repo.get_by_id(doc_id)
+
+        if not document:
+            QMessageBox.warning(self, "Error", "Document not found")
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
             self,
-            "Upload Document",
-            "Document upload functionality coming soon!\n\n"
-            "For now, you can manually add documents to the data/policy_documents folder."
+            "Confirm Deletion",
+            f"Delete this document?\n\n"
+            f"Name: {document.document_name}\n"
+            f"Type: {document.document_type}\n\n"
+            f"This will remove the database record and optionally delete the file.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        # Delete from database
+        success = self.document_repo.delete(doc_id)
+
+        if success:
+            # Ask if they want to delete the physical file too
+            file_path = Path(document.file_path)
+            if file_path.exists():
+                delete_file = QMessageBox.question(
+                    self,
+                    "Delete File?",
+                    f"Document record deleted.\n\n"
+                    f"Also delete the physical file?\n{file_path}",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+
+                if delete_file == QMessageBox.StandardButton.Yes:
+                    try:
+                        file_path.unlink()
+                    except Exception as e:
+                        QMessageBox.warning(
+                            self,
+                            "File Deletion Failed",
+                            f"Could not delete file:\n{str(e)}"
+                        )
+
+            # Refresh documents list
+            self.documents = self.document_repo.get_by_quote(self.quote_id)
+            self._refresh_documents_section()
+
+            QMessageBox.information(self, "Success", "Document deleted successfully")
+        else:
+            QMessageBox.warning(self, "Error", "Failed to delete document")
+
+    def _refresh_documents_section(self):
+        """Refresh the documents section after upload/delete."""
+        # Find the documents group box in the layout
+        layout = self.layout()
+
+        # Find and remove old documents section (it's the 3rd widget after title and summary)
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if isinstance(widget, QGroupBox) and widget.title() == "Attached Documents":
+                layout.removeWidget(widget)
+                widget.deleteLater()
+                break
+
+        # Create and insert new documents section
+        docs_group = self._create_documents_section()
+        layout.insertWidget(2, docs_group)  # Insert after summary section
 
     def _save_changes(self):
         """Save policy information changes."""

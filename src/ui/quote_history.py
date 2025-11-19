@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.quote import QuoteRepository, Quote
 from models.customer import CustomerRepository
+from models.policy_document import PolicyDocumentRepository
 from reports.pdf_generator import PDFQuoteGenerator
 from ui.quote_comparison_dialog import QuoteComparisonDialog
 from ui.loading_widgets import LoadingSpinner
@@ -35,6 +36,7 @@ class QuoteHistory(QWidget):
         super().__init__(parent)
         self.parent = parent
         self.quote_repo = QuoteRepository()
+        self.document_repo = PolicyDocumentRepository()
 
         self._init_ui()
         self._load_quotes()
@@ -377,6 +379,17 @@ class QuoteHistory(QWidget):
                 edit_policy_btn.setStyleSheet("background-color: #10b981; color: white;")
                 edit_policy_btn.clicked.connect(lambda checked, q=quote: self._edit_policy(q))
                 actions_layout.addWidget(edit_policy_btn)
+
+                # Documents button with count for bound quotes
+                doc_count = self.document_repo.count_by_quote(quote.id)
+                if doc_count > 0:
+                    docs_btn = QPushButton(f"📄 Docs ({doc_count})")
+                    docs_btn.setStyleSheet("background-color: #6366f1; color: white;")
+                else:
+                    docs_btn = QPushButton("📄 Docs")
+                docs_btn.setToolTip("View and manage policy documents")
+                docs_btn.clicked.connect(lambda checked, q=quote: self._edit_policy(q))
+                actions_layout.addWidget(docs_btn)
             else:
                 # Bind Quote button for unbound quotes
                 bind_btn = QPushButton("Bind Quote")
