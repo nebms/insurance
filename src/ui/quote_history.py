@@ -193,6 +193,15 @@ class QuoteHistory(QWidget):
         self.type_filter.currentIndexChanged.connect(self._apply_filters)
         layout.addWidget(self.type_filter, row, 1)
 
+        # Cancellation filter
+        layout.addWidget(QLabel("Cancelled:"), row, 2)
+        self.cancelled_filter = QComboBox()
+        self.cancelled_filter.addItem("All Policies", None)
+        self.cancelled_filter.addItem("Active Only", "active")
+        self.cancelled_filter.addItem("Cancelled Only", "cancelled")
+        self.cancelled_filter.currentIndexChanged.connect(self._apply_filters)
+        layout.addWidget(self.cancelled_filter, row, 3)
+
         # Clear filters button
         clear_btn = QPushButton("Clear Filters")
         clear_btn.clicked.connect(self._clear_filters)
@@ -228,6 +237,7 @@ class QuoteHistory(QWidget):
         self.state_filter.setCurrentIndex(0)
         self.status_filter.setCurrentIndex(0)
         self.type_filter.setCurrentIndex(0)
+        self.cancelled_filter.setCurrentIndex(0)
         self.date_from.setDate(QDate.currentDate().addMonths(-3))
         self.date_to.setDate(QDate.currentDate())
         self.premium_min.setValue(0)
@@ -241,6 +251,7 @@ class QuoteHistory(QWidget):
         state_code = self.state_filter.currentData()
         status = self.status_filter.currentData()
         quote_type = self.type_filter.currentData()
+        cancelled_filter = self.cancelled_filter.currentData()
         date_from = self.date_from.date().toPyDate()
         date_to = self.date_to.date().toPyDate()
         premium_min = self.premium_min.value()
@@ -265,6 +276,13 @@ class QuoteHistory(QWidget):
             # Status filter
             if status and quote.status != status:
                 continue
+
+            # Cancellation filter
+            if cancelled_filter:
+                if cancelled_filter == "active" and quote.is_cancelled:
+                    continue
+                if cancelled_filter == "cancelled" and not quote.is_cancelled:
+                    continue
 
             # Type filter
             if quote_type:
@@ -360,7 +378,17 @@ class QuoteHistory(QWidget):
                 self.table.setItem(row, 5, QTableWidgetItem(f"{quote.equipment_age_years} yrs"))
 
             self.table.setItem(row, 6, QTableWidgetItem(f"${quote.total_premium:,.2f}"))
-            self.table.setItem(row, 7, QTableWidgetItem(quote.status))
+
+            # Status column with cancellation indicator
+            if quote.is_cancelled:
+                status_item = QTableWidgetItem("❌ CANCELLED")
+                status_item.setForeground(Qt.GlobalColor.red)
+                status_font = QFont()
+                status_font.setBold(True)
+                status_item.setFont(status_font)
+            else:
+                status_item = QTableWidgetItem(quote.status)
+            self.table.setItem(row, 7, status_item)
 
             # Action buttons
             actions_widget = QWidget()

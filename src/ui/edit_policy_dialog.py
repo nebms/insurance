@@ -22,7 +22,9 @@ from models.customer import CustomerRepository
 from models.policy_document import PolicyDocumentRepository
 from services.binding_service import BindingService
 from services.document_service import DocumentService
+from services.cancellation_service import CancellationService
 from ui.document_upload_dialog import DocumentUploadDialog
+from ui.cancel_policy_dialog import CancelPolicyDialog
 
 
 class EditPolicyDialog(QDialog):
@@ -36,6 +38,7 @@ class EditPolicyDialog(QDialog):
         self.document_repo = PolicyDocumentRepository()
         self.binding_service = BindingService()
         self.document_service = DocumentService()
+        self.cancellation_service = CancellationService()
 
         self.quote = None
         self.customer = None
@@ -95,18 +98,37 @@ class EditPolicyDialog(QDialog):
         docs_group = self._create_documents_section()
         layout.addWidget(docs_group)
 
+        # Cancellation section (if cancelled or can be cancelled)
+        if self.quote.is_cancelled or (self.quote.is_bound and not self.quote.is_cancelled):
+            cancel_group = self._create_cancellation_section()
+            layout.addWidget(cancel_group)
+
         # Buttons
         button_layout = QHBoxLayout()
+
+        # Cancel Policy / Reinstate button (left side)
+        if self.quote.is_bound and not self.quote.is_cancelled:
+            cancel_policy_btn = QPushButton("Cancel Policy")
+            cancel_policy_btn.setStyleSheet("background-color: #dc2626; color: white; padding: 8px 16px;")
+            cancel_policy_btn.clicked.connect(self._cancel_policy)
+            button_layout.addWidget(cancel_policy_btn)
+        elif self.quote.is_cancelled:
+            reinstate_btn = QPushButton("Reinstate Policy")
+            reinstate_btn.setStyleSheet("background-color: #10b981; color: white; padding: 8px 16px;")
+            reinstate_btn.clicked.connect(self._reinstate_policy)
+            button_layout.addWidget(reinstate_btn)
+
         button_layout.addStretch()
 
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton("Close")
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 
-        save_btn = QPushButton("Save Changes")
-        save_btn.setStyleSheet("background-color: #3b82f6; color: white; padding: 8px 16px;")
-        save_btn.clicked.connect(self._save_changes)
-        button_layout.addWidget(save_btn)
+        if not self.quote.is_cancelled:
+            save_btn = QPushButton("Save Changes")
+            save_btn.setStyleSheet("background-color: #3b82f6; color: white; padding: 8px 16px;")
+            save_btn.clicked.connect(self._save_changes)
+            button_layout.addWidget(save_btn)
 
         layout.addLayout(button_layout)
 
@@ -434,6 +456,110 @@ class EditPolicyDialog(QDialog):
         # Create and insert new documents section
         docs_group = self._create_documents_section()
         layout.insertWidget(2, docs_group)  # Insert after summary section
+
+    def _create_cancellation_section(self) -> QGroupBox:
+        """Create cancellation information section."""
+        group = QGroupBox("Cancellation Information")
+
+        if self.quote.is_cancelled:
+            # Show cancellation details
+            group.setStyleSheet("QGroupBox { border: 2px solid #dc2626; border-radius: 4px; padding: 10px; }")
+            layout = QGridLayout()
+
+            row = 0
+            layout.addWidget(QLabel("<b style='color: #dc2626;'>⚠️ This policy is CANCELLED</b>"), row, 0, 1, 2)
+            row += 1
+
+            if self.quote.cancellation_date:
+                layout.addWidget(QLabel("<b>Cancelled On:</b>"), row, 0)
+                layout.addWidget(QLabel(self.quote.cancellation_date), row, 1)
+                row += 1
+
+            if self.quote.cancellation_effective_date:
+                layout.addWidget(QLabel("<b>Effective Date:</b>"), row, 0)
+                layout.addWidget(QLabel(self.quote.cancellation_effective_date), row, 1)
+                row += 1
+
+            if self.quote.cancellation_reason:
+                layout.addWidget(QLabel("<b>Reason:</b>"), row, 0)
+                layout.addWidget(QLabel(self.quote.cancellation_reason), row, 1)
+                row += 1
+
+            if self.quote.cancellation_type:
+                layout.addWidget(QLabel("<b>Cancellation Type:</b>"), row, 0)
+                layout.addWidget(QLabel(self.quote.cancellation_type), row, 1)
+                row += 1
+
+            layout.addWidget(QLabel("<b>Return Premium:</b>"), row, 0)
+            return_amount = self.quote.return_premium or 0.0
+            return_label = QLabel(f"${return_amount:,.2f}")
+            return_label.setStyleSheet("font-weight: bold; color: #10b981;")
+            layout.addWidget(return_label, row, 1)
+            row += 1
+
+            if self.quote.cancellation_notes:
+                layout.addWidget(QLabel("<b>Notes:</b>"), row, 0, Qt.AlignmentFlag.AlignTop)
+                notes_label = QLabel(self.quote.cancellation_notes)
+                notes_label.setWordWrap(True)
+                layout.addWidget(notes_label, row, 1)
+                row += 1
+
+            group.setLayout(layout)
+        else:
+            # Policy can be cancelled
+            layout = QVBoxLayout()
+            info_label = QLabel(
+                "This policy can be cancelled. Click 'Cancel Policy' button below to initiate cancellation."
+            )
+            info_label.setWordWrap(True)
+            info_label.setStyleSheet("color: #6b7280; font-style: italic;")
+            layout.addWidget(info_label)
+            group.setLayout(layout)
+
+        return group
+
+    def _cancel_policy(self):
+        """Open cancel policy dialog."""
+        dialog = CancelPolicyDialog(self.quote_id, self)
+        if dialog.exec():
+            # Reload quote data and UI
+            self._load_data()
+            self.close()
+            # Reopen to show updated state
+            QMessageBox.information(
+                self,
+                "Policy Cancelled",
+                "The policy has been cancelled successfully."
+            )
+            self.accept()
+
+    def _reinstate_policy(self):
+        """Reinstate a cancelled policy."""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Reinstatement",
+            f"Are you sure you want to reinstate this policy?\n\n"
+            f"Policy: {self.quote.quote_number}\n"
+            f"This will restore the policy to active status.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.No:
+            return
+
+        notes = f"Policy reinstated on {datetime.now().strftime('%Y-%m-%d')}"
+        success, message = self.cancellation_service.reinstate_policy(
+            self.quote_id,
+            notes
+        )
+
+        if success:
+            QMessageBox.information(self, "Success", message)
+            self._load_data()
+            self.close()
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Error", f"Reinstatement failed:\n{message}")
 
     def _save_changes(self):
         """Save policy information changes."""

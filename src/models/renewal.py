@@ -194,6 +194,7 @@ class RenewalRepository:
     def get_all(self, status: Optional[str] = None, limit: int = 100) -> List[Renewal]:
         """
         Get all renewals, optionally filtered by status.
+        Excludes renewals for cancelled policies.
 
         Args:
             status: Optional status filter
@@ -204,16 +205,20 @@ class RenewalRepository:
         """
         if status:
             query = """
-            SELECT * FROM renewals
-            WHERE status = ?
-            ORDER BY policy_end_date ASC
+            SELECT r.* FROM renewals r
+            JOIN quotes q ON r.original_quote_id = q.id
+            WHERE r.status = ?
+            AND (q.is_cancelled IS NULL OR q.is_cancelled = 0)
+            ORDER BY r.policy_end_date ASC
             LIMIT ?
             """
             results = self.db.execute_query(query, (status, limit))
         else:
             query = """
-            SELECT * FROM renewals
-            ORDER BY policy_end_date ASC
+            SELECT r.* FROM renewals r
+            JOIN quotes q ON r.original_quote_id = q.id
+            WHERE (q.is_cancelled IS NULL OR q.is_cancelled = 0)
+            ORDER BY r.policy_end_date ASC
             LIMIT ?
             """
             results = self.db.execute_query(query, (limit,))
@@ -223,6 +228,7 @@ class RenewalRepository:
     def get_upcoming_renewals(self, days_ahead: int = 90) -> List[Renewal]:
         """
         Get renewals due within specified days.
+        Excludes renewals for cancelled policies.
 
         Args:
             days_ahead: Number of days to look ahead
@@ -234,10 +240,12 @@ class RenewalRepository:
         today = date.today().strftime('%Y-%m-%d')
 
         query = """
-        SELECT * FROM renewals
-        WHERE policy_end_date BETWEEN ? AND ?
-        AND status IN ('pending', 'generated', 'sent')
-        ORDER BY policy_end_date ASC
+        SELECT r.* FROM renewals r
+        JOIN quotes q ON r.original_quote_id = q.id
+        WHERE r.policy_end_date BETWEEN ? AND ?
+        AND r.status IN ('pending', 'generated', 'sent')
+        AND (q.is_cancelled IS NULL OR q.is_cancelled = 0)
+        ORDER BY r.policy_end_date ASC
         """
 
         results = self.db.execute_query(query, (today, target_date))

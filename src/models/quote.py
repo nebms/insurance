@@ -44,6 +44,16 @@ class Quote:
         self.is_bound = kwargs.get('is_bound', 0)
         self.original_quote_id = kwargs.get('original_quote_id')
 
+        # Cancellation information
+        self.is_cancelled = kwargs.get('is_cancelled', 0)
+        self.cancellation_date = kwargs.get('cancellation_date')
+        self.cancellation_effective_date = kwargs.get('cancellation_effective_date')
+        self.cancellation_reason = kwargs.get('cancellation_reason')
+        self.cancellation_type = kwargs.get('cancellation_type')
+        self.return_premium = kwargs.get('return_premium', 0.0)
+        self.cancelled_by_user_id = kwargs.get('cancelled_by_user_id')
+        self.cancellation_notes = kwargs.get('cancellation_notes', '')
+
         # Metadata
         self.status = kwargs.get('status', 'draft')
         self.notes = kwargs.get('notes', '')
