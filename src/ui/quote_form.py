@@ -93,11 +93,20 @@ class QuoteForm(QWidget):
         self.customer_combo = QComboBox()
         self.customer_combo.setEditable(True)
         self.customer_combo.setPlaceholderText("Select existing or type new customer name")
+        self.customer_combo.setToolTip(
+            "Select an existing customer or search by name, email, or phone.\n\n"
+            "Fuzzy search enabled:\n"
+            "• Type any part of the name\n"
+            "• Type email address\n"
+            "• Type phone number\n\n"
+            "Click '+ New' to create a new customer."
+        )
         self.customer_combo.currentTextChanged.connect(self._on_customer_changed)
         layout.addWidget(self.customer_combo, 0, 1)
 
         # New customer button
         new_customer_btn = QPushButton("+ New")
+        new_customer_btn.setToolTip("Create a new customer record with full contact details")
         new_customer_btn.clicked.connect(self._create_new_customer)
         layout.addWidget(new_customer_btn, 0, 2)
 
@@ -105,6 +114,7 @@ class QuoteForm(QWidget):
         layout.addWidget(QLabel("Customer Name *:"), 1, 0)
         self.customer_name = QLineEdit()
         self.customer_name.setPlaceholderText("Enter customer name")
+        self.customer_name.setToolTip("Enter the customer's full name (2-200 characters)")
         self.customer_name.textChanged.connect(self._validate_customer_name)
         layout.addWidget(self.customer_name, 1, 1)
 
@@ -136,6 +146,7 @@ class QuoteForm(QWidget):
         # State
         layout.addWidget(QLabel("State *:"), 0, 0)
         self.state_combo = QComboBox()
+        self.state_combo.setToolTip("Select the state where the equipment is located.\nRates vary by state.")
         layout.addWidget(self.state_combo, 0, 1)
 
         # Equipment Age
@@ -144,6 +155,13 @@ class QuoteForm(QWidget):
         self.age_spin.setRange(0, 99)
         self.age_spin.setValue(0)
         self.age_spin.setSuffix(" years")
+        self.age_spin.setToolTip(
+            "Enter the age of the pivot equipment in years.\n\n"
+            "Age determines the rate category:\n"
+            "• Under 20 years: Standard rates\n"
+            "• 20-34 years: Higher rates\n"
+            "• 35+ years: Special rates (Corner/Long option available)"
+        )
         layout.addWidget(self.age_spin, 1, 1)
 
         # Pivot Amount
@@ -153,6 +171,13 @@ class QuoteForm(QWidget):
         self.pivot_amount.setValue(100000)
         self.pivot_amount.setPrefix("$ ")
         self.pivot_amount.setGroupSeparatorShown(True)
+        self.pivot_amount.setToolTip(
+            "Enter the insured value of the center pivot equipment.\n\n"
+            "This should be the replacement cost value (RCV):\n"
+            "• Purchase price for new equipment\n"
+            "• Depreciated value for used equipment\n"
+            "• Typical range: $50,000 - $500,000"
+        )
         layout.addWidget(self.pivot_amount, 2, 1)
 
         # Ancillary Amount
@@ -162,6 +187,15 @@ class QuoteForm(QWidget):
         self.ancillary_amount.setValue(0)
         self.ancillary_amount.setPrefix("$ ")
         self.ancillary_amount.setGroupSeparatorShown(True)
+        self.ancillary_amount.setToolTip(
+            "Enter the value of ancillary equipment (optional).\n\n"
+            "Ancillary equipment includes:\n"
+            "• Booster pumps\n"
+            "• Chemigation equipment\n"
+            "• Control panels\n"
+            "• Variable frequency drives\n"
+            "• GPS guidance systems"
+        )
         layout.addWidget(self.ancillary_amount, 3, 1)
 
         # Submersible Pump Amount
@@ -171,13 +205,26 @@ class QuoteForm(QWidget):
         self.submersible_amount.setValue(0)
         self.submersible_amount.setPrefix("$ ")
         self.submersible_amount.setGroupSeparatorShown(True)
+        self.submersible_amount.setToolTip(
+            "Enter the value of submersible pumps (optional).\n\n"
+            "A flat charge of $75 is added per $10,000 of coverage.\n"
+            "Example: $50,000 pump = $375 additional premium"
+        )
         layout.addWidget(self.submersible_amount, 4, 1)
 
         # Equipment Type
         layout.addWidget(QLabel("Equipment Type *:"), 5, 0)
         self.type_group = QButtonGroup()
         self.type_standard = QRadioButton("Standard")
+        self.type_standard.setToolTip(
+            "Standard center pivot systems.\n"
+            "Most common equipment type with standard rates."
+        )
         self.type_towable = QRadioButton("Towable/Corner/Long")
+        self.type_towable.setToolTip(
+            "Towable pivot systems or corner/long configurations.\n"
+            "Different rate structure than standard pivots."
+        )
         self.type_standard.setChecked(True)
         self.type_group.addButton(self.type_standard)
         self.type_group.addButton(self.type_towable)
@@ -190,11 +237,25 @@ class QuoteForm(QWidget):
         # M&E Endorsement
         self.me_checkbox = QCheckBox("Mechanical & Electrical (M&E) Endorsement")
         self.me_checkbox.setChecked(True)
+        self.me_checkbox.setToolTip(
+            "Mechanical & Electrical Endorsement (recommended).\n\n"
+            "Provides coverage for mechanical and electrical breakdown:\n"
+            "• Motor failures\n"
+            "• Electrical component failures\n"
+            "• Transmission problems\n\n"
+            "Adds approximately 10-20% to premium.\n"
+            "Highly recommended for equipment protection."
+        )
         layout.addWidget(self.me_checkbox, 6, 0, 1, 2)
 
         # Corner/Long (show only if age > 34)
         self.corner_checkbox = QCheckBox("Corner/Long/Underslung System (Age 35+)")
         self.corner_checkbox.setEnabled(False)
+        self.corner_checkbox.setToolTip(
+            "Corner, Long, or Underslung pivot systems.\n\n"
+            "Only available for equipment 35+ years old.\n"
+            "Different rate structure for specialized systems."
+        )
         layout.addWidget(self.corner_checkbox, 7, 0, 1, 2)
 
         # Connect age change to enable corner checkbox
@@ -249,6 +310,15 @@ class QuoteForm(QWidget):
             "$500", "$1,000", "$2,500", "$5,000"
         ])
         self.pivot_deductible.setCurrentIndex(2)  # Default $2,500
+        self.pivot_deductible.setToolTip(
+            "Select the deductible for pivot equipment coverage.\n\n"
+            "Higher deductible = lower premium\n"
+            "Lower deductible = higher premium\n\n"
+            "Common choices:\n"
+            "• $2,500 (recommended for most customers)\n"
+            "• $5,000 (for lower premiums)\n"
+            "• $1,000 (for maximum protection)"
+        )
         layout.addWidget(self.pivot_deductible, 0, 1)
 
         # Ancillary Deductible
@@ -258,6 +328,11 @@ class QuoteForm(QWidget):
             "$500", "$1,000", "$2,500", "$5,000"
         ])
         self.ancillary_deductible.setCurrentIndex(1)  # Default $1,000
+        self.ancillary_deductible.setToolTip(
+            "Select the deductible for ancillary equipment.\n\n"
+            "Typically lower than pivot deductible.\n"
+            "Default: $1,000"
+        )
         layout.addWidget(self.ancillary_deductible, 1, 1)
 
         # Term
@@ -266,6 +341,13 @@ class QuoteForm(QWidget):
         self.term_combo.addItems([
             "12", "24", "36", "48", "60", "72", "84", "96"
         ])
+        self.term_combo.setToolTip(
+            "Select the policy term length in months.\n\n"
+            "Standard term: 12 months (annual policy)\n"
+            "Longer terms available for multi-year coverage.\n\n"
+            "Note: Rates are based on 12-month term.\n"
+            "Multi-year terms will be prorated accordingly."
+        )
         layout.addWidget(self.term_combo, 2, 1)
 
         group.setLayout(layout)
