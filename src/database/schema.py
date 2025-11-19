@@ -223,6 +223,36 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
+# Quote templates table
+CREATE_QUOTE_TEMPLATES_TABLE = """
+CREATE TABLE IF NOT EXISTS quote_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_name TEXT UNIQUE NOT NULL,
+    description TEXT,
+
+    -- Location and term
+    state_code TEXT NOT NULL,
+    term_months INTEGER NOT NULL,
+
+    -- Equipment configuration (single pivot template)
+    pivot_amount REAL NOT NULL,
+    equipment_age_years INTEGER NOT NULL,
+    pivot_deductible_code INTEGER NOT NULL,
+    ancillary_deductible_code INTEGER NOT NULL,
+    ancillary_amount REAL DEFAULT 0,
+    submersible_pump_amount REAL DEFAULT 0,
+    is_towable INTEGER DEFAULT 0,
+    is_corner_or_long INTEGER DEFAULT 0,
+    has_me_endorsement INTEGER DEFAULT 1,
+
+    -- Metadata
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (state_code) REFERENCES states(code)
+);
+"""
+
 # Rate change audit log
 CREATE_RATE_CHANGE_LOG_TABLE = """
 CREATE TABLE IF NOT EXISTS rate_change_log (
@@ -249,6 +279,8 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_state ON quotes(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_quote ON quote_line_items(quote_id);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_line_num ON quote_line_items(quote_id, line_number);",
+    "CREATE INDEX IF NOT EXISTS idx_templates_state ON quote_templates(state_code);",
+    "CREATE INDEX IF NOT EXISTS idx_templates_name ON quote_templates(template_name);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_under20_state ON pivot_rates_under_20(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_20to34_state ON pivot_rates_20_to_34(state_code);",
     "CREATE INDEX IF NOT EXISTS idx_pivot_35plus_state ON pivot_rates_35_plus(state_code);",
@@ -268,6 +300,7 @@ ALL_TABLES = [
     CREATE_USERS_TABLE,
     CREATE_QUOTES_TABLE,
     CREATE_QUOTE_LINE_ITEMS_TABLE,
+    CREATE_QUOTE_TEMPLATES_TABLE,
     CREATE_PIVOT_RATES_UNDER_20_TABLE,
     CREATE_PIVOT_RATES_20_TO_34_TABLE,
     CREATE_PIVOT_RATES_35_PLUS_TABLE,

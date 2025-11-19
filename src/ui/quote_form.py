@@ -22,6 +22,7 @@ from calculations.premium_calc import PremiumCalculator
 from database.db_manager import get_db
 from ui.line_item_widget import LineItemWidget
 from ui.line_item_dialog import LineItemDialog
+from ui.template_dialogs import SaveTemplateDialog, TemplateManagerDialog
 
 
 class QuoteForm(QWidget):
@@ -268,10 +269,19 @@ class QuoteForm(QWidget):
         self.calc_button.setMinimumHeight(40)
         self.calc_button.clicked.connect(self._calculate_quote)
 
+        # Template buttons
+        self.load_template_button = QPushButton("Load Template")
+        self.load_template_button.clicked.connect(self._load_template)
+
+        self.save_template_button = QPushButton("Save as Template")
+        self.save_template_button.clicked.connect(self._save_as_template)
+
         # Reset button
         self.reset_button = QPushButton("Reset Form")
         self.reset_button.clicked.connect(self.reset_form)
 
+        layout.addWidget(self.load_template_button)
+        layout.addWidget(self.save_template_button)
         layout.addStretch()
         layout.addWidget(self.reset_button)
         layout.addWidget(self.calc_button)
@@ -589,3 +599,124 @@ class QuoteForm(QWidget):
         # Reset to single mode
         if hasattr(self, 'mode_single'):
             self.mode_single.setChecked(True)
+
+    def _save_as_template(self):
+        """Save current quote configuration as a template."""
+        # Only works in single mode
+        if self.quote_mode == 'multiple':
+            QMessageBox.information(
+                self,
+                "Single Mode Only",
+                "Templates can only be saved in Single Equipment mode.\n\n"
+                "Templates provide a quick way to populate common single equipment configurations."
+            )
+            return
+
+        # Validate required fields
+        if self.state_combo.currentIndex() < 0:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Please select a state before saving as template."
+            )
+            self.state_combo.setFocus()
+            return
+
+        if self.pivot_amount.value() <= 0:
+            QMessageBox.warning(
+                self,
+                "Validation Error",
+                "Please enter a valid pivot amount before saving as template."
+            )
+            self.pivot_amount.setFocus()
+            return
+
+        # Collect current form data
+        quote_data = {
+            'state_code': self.state_combo.currentData(),
+            'term_months': int(self.term_combo.currentText().split()[0]),
+            'pivot_amount': self.pivot_amount.value(),
+            'equipment_age_years': self.age_spin.value(),
+            'pivot_deductible_code': self.pivot_deductible.currentData(),
+            'ancillary_deductible_code': self.ancillary_deductible.currentData(),
+            'ancillary_amount': self.ancillary_amount.value(),
+            'submersible_pump_amount': self.submersible_amount.value(),
+            'is_towable': 1 if self.type_towable.isChecked() else 0,
+            'is_corner_or_long': 1 if self.corner_checkbox.isChecked() else 0,
+            'has_me_endorsement': 1 if self.me_checkbox.isChecked() else 0
+        }
+
+        # Show save template dialog
+        dialog = SaveTemplateDialog(quote_data, self)
+        if dialog.exec():
+            # Template was saved successfully
+            pass
+
+    def _load_template(self):
+        """Load a template to populate the form."""
+        # Only works in single mode
+        if self.quote_mode == 'multiple':
+            QMessageBox.information(
+                self,
+                "Single Mode Only",
+                "Templates can only be loaded in Single Equipment mode.\n\n"
+                "Switch to Single Equipment mode to use templates."
+            )
+            return
+
+        # Get current state for filtering (if selected)
+        state_code = self.state_combo.currentData() if self.state_combo.currentIndex() >= 0 else None
+
+        # Show template manager dialog
+        dialog = TemplateManagerDialog(state_code, self)
+        if dialog.exec():
+            template = dialog.get_selected_template()
+            if template:
+                self._populate_from_template(template)
+
+    def _populate_from_template(self, template):
+        """Populate form from template data."""
+        # Set state
+        for i in range(self.state_combo.count()):
+            if self.state_combo.itemData(i) == template.state_code:
+                self.state_combo.setCurrentIndex(i)
+                break
+
+        # Set term
+        term_text = f"{template.term_months} months"
+        for i in range(self.term_combo.count()):
+            if self.term_combo.itemText(i) == term_text:
+                self.term_combo.setCurrentIndex(i)
+                break
+
+        # Set equipment details
+        self.pivot_amount.setValue(template.pivot_amount)
+        self.age_spin.setValue(template.equipment_age_years)
+        self.ancillary_amount.setValue(template.ancillary_amount)
+        self.submersible_amount.setValue(template.submersible_pump_amount)
+
+        # Set equipment type
+        if template.is_towable:
+            self.type_towable.setChecked(True)
+        else:
+            self.type_standard.setChecked(True)
+
+        # Set checkboxes
+        self.me_checkbox.setChecked(bool(template.has_me_endorsement))
+        self.corner_checkbox.setChecked(bool(template.is_corner_or_long))
+
+        # Set deductibles
+        pivot_ded_index = self.pivot_deductible.findData(template.pivot_deductible_code)
+        if pivot_ded_index >= 0:
+            self.pivot_deductible.setCurrentIndex(pivot_ded_index)
+
+        anc_ded_index = self.ancillary_deductible.findData(template.ancillary_deductible_code)
+        if anc_ded_index >= 0:
+            self.ancillary_deductible.setCurrentIndex(anc_ded_index)
+
+        QMessageBox.information(
+            self,
+            "Template Loaded",
+            f"Template '{template.template_name}' has been loaded.\n\n"
+            f"Review the values and click Calculate Premium to generate a quote."
+        )

@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 import os
 import platform
+from datetime import date
 
 import sys
 from pathlib import Path
@@ -120,6 +121,9 @@ class QuoteHistory(QWidget):
             view_btn = QPushButton("View")
             view_btn.clicked.connect(lambda checked, q=quote: self._view_quote(q))
 
+            duplicate_btn = QPushButton("Duplicate")
+            duplicate_btn.clicked.connect(lambda checked, q=quote: self._duplicate_quote(q))
+
             pdf_btn = QPushButton("Export PDF")
             pdf_btn.clicked.connect(lambda checked, q=quote: self._export_pdf(q))
 
@@ -127,6 +131,7 @@ class QuoteHistory(QWidget):
             delete_btn.clicked.connect(lambda checked, q=quote: self._delete_quote(q))
 
             actions_layout.addWidget(view_btn)
+            actions_layout.addWidget(duplicate_btn)
             actions_layout.addWidget(pdf_btn)
             actions_layout.addWidget(delete_btn)
             actions_layout.addStretch()
@@ -214,6 +219,99 @@ class QuoteHistory(QWidget):
                     "Delete Error",
                     f"Error deleting quote:\n{str(e)}"
                 )
+
+    def _duplicate_quote(self, quote):
+        """Duplicate a quote with all its line items."""
+        try:
+            # Generate new quote number
+            new_quote_number = self.quote_repo.generate_quote_number()
+
+            # Create new quote with copied data
+            new_quote = Quote(
+                quote_number=new_quote_number,
+                state_code=quote.state_code,
+                term_months=quote.term_months,
+                customer_id=quote.customer_id,
+                agent_name=quote.agent_name,
+                quote_date=str(date.today()),
+                status='draft',
+                notes=f"Duplicated from {quote.quote_number}",
+                # Legacy fields for backward compatibility
+                pivot_amount=quote.pivot_amount,
+                equipment_age_years=quote.equipment_age_years,
+                pivot_deductible_code=quote.pivot_deductible_code,
+                ancillary_deductible_code=quote.ancillary_deductible_code,
+                ancillary_amount=quote.ancillary_amount,
+                submersible_pump_amount=quote.submersible_pump_amount,
+                is_towable=quote.is_towable,
+                is_corner_or_long=quote.is_corner_or_long,
+                has_me_endorsement=quote.has_me_endorsement,
+                pivot_rate=quote.pivot_rate,
+                ancillary_rate=quote.ancillary_rate,
+                pivot_premium=quote.pivot_premium,
+                ancillary_premium=quote.ancillary_premium,
+                submersible_charge=quote.submersible_charge,
+                total_premium=quote.total_premium
+            )
+
+            # Duplicate line items if this is a multi-pivot quote
+            duplicated_line_items = None
+            if quote.has_multiple_items():
+                from models.quote_line_item import QuoteLineItem
+                duplicated_line_items = []
+
+                for item in quote.line_items:
+                    new_item = QuoteLineItem(
+                        line_number=item.line_number,
+                        pivot_amount=item.pivot_amount,
+                        equipment_age_years=item.equipment_age_years,
+                        pivot_deductible_code=item.pivot_deductible_code,
+                        ancillary_deductible_code=item.ancillary_deductible_code,
+                        ancillary_amount=item.ancillary_amount,
+                        submersible_pump_amount=item.submersible_pump_amount,
+                        is_towable=item.is_towable,
+                        is_corner_or_long=item.is_corner_or_long,
+                        has_me_endorsement=item.has_me_endorsement,
+                        pivot_rate=item.pivot_rate,
+                        ancillary_rate=item.ancillary_rate,
+                        pivot_premium=item.pivot_premium,
+                        ancillary_premium=item.ancillary_premium,
+                        submersible_charge=item.submersible_charge,
+                        line_total_premium=item.line_total_premium,
+                        alt1_deductible=item.alt1_deductible,
+                        alt1_rate=item.alt1_rate,
+                        alt1_premium=item.alt1_premium,
+                        alt2_deductible=item.alt2_deductible,
+                        alt2_rate=item.alt2_rate,
+                        alt2_premium=item.alt2_premium
+                    )
+                    duplicated_line_items.append(new_item)
+
+            # Save the duplicated quote
+            new_quote_id = self.quote_repo.create(new_quote, duplicated_line_items)
+
+            if new_quote_id:
+                QMessageBox.information(
+                    self,
+                    "Quote Duplicated",
+                    f"Quote duplicated successfully!\n\n"
+                    f"Original: {quote.quote_number}\n"
+                    f"New Quote: {new_quote_number}"
+                )
+                self._load_quotes()  # Refresh table
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Duplication Failed",
+                    f"Could not duplicate quote {quote.quote_number}."
+                )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Duplication Error",
+                f"Error duplicating quote:\n{str(e)}"
+            )
 
 
 class QuoteDetailsDialog(QDialog):
