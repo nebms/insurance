@@ -307,6 +307,35 @@ class QuoteRepository:
 
         return rows > 0
 
+    def update_fields(self, quote_id: int, fields: Dict[str, Any]) -> bool:
+        """
+        Update specific fields of a quote.
+
+        Args:
+            quote_id: ID of quote to update
+            fields: Dictionary of field names and values to update
+
+        Returns:
+            True if successful
+        """
+        if not fields:
+            return False
+
+        # Build UPDATE query dynamically
+        set_clauses = [f"{field} = ?" for field in fields.keys()]
+        set_clause = ", ".join(set_clauses)
+
+        # Always update the updated_at timestamp
+        set_clause += ", updated_at = CURRENT_TIMESTAMP"
+
+        query = f"UPDATE quotes SET {set_clause} WHERE id = ?"
+
+        # Prepare parameters (values + quote_id)
+        params = list(fields.values()) + [quote_id]
+
+        rows = self.db.execute_update(query, params)
+        return rows > 0
+
     def delete(self, quote_id: int) -> bool:
         """Delete quote (line items will be cascade deleted)."""
         query = "DELETE FROM quotes WHERE id = ?"

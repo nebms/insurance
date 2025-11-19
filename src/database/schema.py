@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS quotes (
     is_bound INTEGER DEFAULT 0,
     original_quote_id INTEGER,
 
+    -- Cancellation information
+    is_cancelled INTEGER DEFAULT 0,
+    cancellation_date TEXT,
+    cancellation_effective_date TEXT,
+    cancellation_reason TEXT,
+    cancellation_type TEXT,
+    return_premium REAL DEFAULT 0,
+    cancelled_by_user_id INTEGER,
+    cancellation_notes TEXT,
+
     -- Metadata
     status TEXT DEFAULT 'draft',
     notes TEXT,
@@ -365,6 +375,9 @@ CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_quotes_bound_date ON quotes(bound_date);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_effective_date ON quotes(effective_date);",
     "CREATE INDEX IF NOT EXISTS idx_quotes_payment_status ON quotes(payment_status);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_is_cancelled ON quotes(is_cancelled);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_cancellation_date ON quotes(cancellation_date);",
+    "CREATE INDEX IF NOT EXISTS idx_quotes_cancellation_effective ON quotes(cancellation_effective_date);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_quote ON quote_line_items(quote_id);",
     "CREATE INDEX IF NOT EXISTS idx_line_items_line_num ON quote_line_items(quote_id, line_number);",
     "CREATE INDEX IF NOT EXISTS idx_templates_state ON quote_templates(state_code);",

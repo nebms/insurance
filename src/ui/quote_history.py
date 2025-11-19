@@ -572,8 +572,26 @@ class QuoteHistory(QWidget):
     def _duplicate_quote(self, quote):
         """Duplicate a quote with all its line items."""
         try:
+            # Warn if duplicating cancelled quote
+            if quote.is_cancelled:
+                reply = QMessageBox.question(
+                    self,
+                    "Duplicate Cancelled Policy?",
+                    f"This quote ({quote.quote_number}) is CANCELLED.\n\n"
+                    f"Are you sure you want to duplicate it?\n"
+                    f"The new quote will not be cancelled.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.No:
+                    return
+
             # Generate new quote number
             new_quote_number = self.quote_repo.generate_quote_number()
+
+            # Build notes indicating source and cancellation status
+            base_notes = f"Duplicated from {quote.quote_number}"
+            if quote.is_cancelled:
+                base_notes += f" (CANCELLED on {quote.cancellation_date})"
 
             # Create new quote with copied data
             new_quote = Quote(
@@ -584,7 +602,7 @@ class QuoteHistory(QWidget):
                 agent_name=quote.agent_name,
                 quote_date=str(date.today()),
                 status='draft',
-                notes=f"Duplicated from {quote.quote_number}",
+                notes=base_notes,
                 # Legacy fields for backward compatibility
                 pivot_amount=quote.pivot_amount,
                 equipment_age_years=quote.equipment_age_years,

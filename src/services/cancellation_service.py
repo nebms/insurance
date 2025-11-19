@@ -84,7 +84,7 @@ class CancellationService:
         }
 
         # Update quote with cancellation info
-        success = self.quote_repo.update(quote_id, update_data)
+        success = self.quote_repo.update_fields(quote_id, update_data)
 
         if success:
             return True, f"Policy cancelled successfully. Return premium: ${return_premium:,.2f}"
@@ -234,7 +234,7 @@ class CancellationService:
             'status': 'bound'
         }
 
-        success = self.quote_repo.update(quote_id, update_data)
+        success = self.quote_repo.update_fields(quote_id, update_data)
 
         if success:
             return True, "Policy reinstated successfully"

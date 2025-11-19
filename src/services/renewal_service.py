@@ -39,6 +39,10 @@ class RenewalService:
         if not quote.is_bound or not quote.policy_end_date:
             raise ValueError("Quote must be bound with a policy end date to create renewal")
 
+        # Check if quote is cancelled
+        if quote.is_cancelled:
+            raise ValueError("Cannot create renewal for cancelled policy")
+
         # Check if renewal already exists
         existing = self.renewal_repo.get_by_original_quote(quote_id)
         if existing:

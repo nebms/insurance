@@ -50,6 +50,10 @@ class BindingService:
         if quote.is_bound:
             return False, f"Quote is already bound (Policy #: {quote.policy_number or 'N/A'})"
 
+        # Check if cancelled
+        if quote.is_cancelled:
+            return False, "Cannot bind a cancelled quote. Reinstate the policy first."
+
         # Extract binding information
         effective_date_str = binding_info.get('effective_date')
         carrier_name = binding_info.get('carrier_name', '')
@@ -128,6 +132,9 @@ class BindingService:
         if not quote.is_bound:
             return False, "Quote is not bound. Bind it first before updating policy info."
 
+        if quote.is_cancelled:
+            return False, "Cannot update cancelled policy. Reinstate it first."
+
         # Update fields if provided
         if 'policy_number' in policy_info and policy_info['policy_number']:
             quote.policy_number = policy_info['policy_number']
@@ -174,6 +181,9 @@ class BindingService:
 
         if not quote.is_bound:
             return False, "Quote is not bound"
+
+        if quote.is_cancelled:
+            return False, "Cannot unbind a cancelled policy. Reinstate it first if needed."
 
         # Clear binding information
         quote.is_bound = 0
@@ -255,6 +265,10 @@ class BindingService:
             Renewal instance or None
         """
         if not quote.expiration_date:
+            return None
+
+        # Don't create renewal for cancelled policies
+        if quote.is_cancelled:
             return None
 
         # Check if renewal already exists
