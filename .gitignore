@@ -35,6 +35,7 @@ htmlcov/
 
 # Application specific
 data/*.db
+data/*.db.backup_*
 data/pdfs/*.pdf
 data/exports/*.csv
 logs/
