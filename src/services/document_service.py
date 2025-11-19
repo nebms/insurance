@@ -9,6 +9,7 @@ from typing import Optional, Tuple, List
 from datetime import datetime
 
 from models.policy_document import PolicyDocument, PolicyDocumentRepository
+from models.quote import QuoteRepository
 
 
 class DocumentService:
@@ -31,6 +32,7 @@ class DocumentService:
 
     def __init__(self):
         self.document_repo = PolicyDocumentRepository()
+        self.quote_repo = QuoteRepository()
         self._ensure_documents_directory()
 
     def _ensure_documents_directory(self):
@@ -54,6 +56,14 @@ class DocumentService:
         Returns:
             Tuple of (success, message, document)
         """
+        # Check if quote/policy is cancelled
+        quote = self.quote_repo.get_by_id(quote_id)
+        if not quote:
+            return False, "Quote/Policy not found", None
+
+        if quote.is_cancelled:
+            return False, "Cannot upload documents to cancelled policy. Reinstate the policy first if needed.", None
+
         # Validate source file exists
         source_file = Path(source_path)
         if not source_file.exists():

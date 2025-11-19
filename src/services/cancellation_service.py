@@ -6,6 +6,7 @@ Handles policy cancellation workflow, premium calculations, and validation.
 from typing import Dict, Any, Tuple, Optional
 from datetime import datetime, date
 from models.quote import Quote, QuoteRepository
+from models.renewal import RenewalRepository
 
 
 class CancellationService:
@@ -32,6 +33,7 @@ class CancellationService:
 
     def __init__(self):
         self.quote_repo = QuoteRepository()
+        self.renewal_repo = RenewalRepository()
 
     def cancel_policy(self, quote_id: int, cancellation_info: Dict[str, Any],
                      current_user_id: Optional[int] = None) -> Tuple[bool, str]:
@@ -87,6 +89,9 @@ class CancellationService:
         success = self.quote_repo.update_fields(quote_id, update_data)
 
         if success:
+            # Cancel any existing renewal tracking
+            self._cancel_renewal_tracking(quote_id)
+
             return True, f"Policy cancelled successfully. Return premium: ${return_premium:,.2f}"
         else:
             return False, "Failed to update policy cancellation"
@@ -152,6 +157,11 @@ class CancellationService:
         Returns:
             Return premium amount
         """
+        # Handle edge case: negative or zero premium
+        if quote.total_premium <= 0:
+            # No refund for zero or negative premium policies
+            return 0.0
+
         if cancellation_type == "Flat":
             # Flat cancellation - full refund
             return quote.total_premium
@@ -195,6 +205,45 @@ class CancellationService:
 
         return 0.0
 
+    def _cancel_renewal_tracking(self, quote_id: int) -> None:
+        """
+        Cancel any existing renewal tracking for a cancelled policy.
+
+        Args:
+            quote_id: Quote/policy ID
+        """
+        # Get existing renewal
+        renewal = self.renewal_repo.get_by_original_quote(quote_id)
+        if renewal:
+            # Update renewal status to 'lapsed' (cancelled by policy cancellation)
+            try:
+                renewal.status = 'lapsed'
+                self.renewal_repo.update(renewal)
+            except Exception as e:
+                # Log error but don't fail the cancellation
+                print(f"Warning: Failed to update renewal status: {e}")
+
+    def _reactivate_renewal_tracking(self, quote_id: int) -> None:
+        """
+        Reactivate renewal tracking for a reinstated policy.
+
+        Args:
+            quote_id: Quote/policy ID
+        """
+        # Get existing renewal
+        renewal = self.renewal_repo.get_by_original_quote(quote_id)
+        if renewal and renewal.status == 'lapsed':
+            # Reactivate renewal - set back to pending if no quote generated yet
+            try:
+                if renewal.renewal_quote_id:
+                    renewal.status = 'generated'  # Quote already exists
+                else:
+                    renewal.status = 'pending'  # No quote yet, back to pending
+                self.renewal_repo.update(renewal)
+            except Exception as e:
+                # Log error but don't fail the reinstatement
+                print(f"Warning: Failed to reactivate renewal: {e}")
+
     def reinstate_policy(self, quote_id: int, reinstatement_notes: str = "",
                         current_user_id: Optional[int] = None) -> Tuple[bool, str]:
         """
@@ -237,6 +286,9 @@ class CancellationService:
         success = self.quote_repo.update_fields(quote_id, update_data)
 
         if success:
+            # Reactivate renewal tracking if it exists
+            self._reactivate_renewal_tracking(quote_id)
+
             return True, "Policy reinstated successfully"
         else:
             return False, "Failed to reinstate policy"
